@@ -1,0 +1,63 @@
+{
+  "images": 300,
+  "seconds": 16.9,
+  "ms_per_image": 56.2,
+  "output_is_softmax": true,
+  "accuracy": 0.9767,
+  "per_class": {
+    "ceph_front": "30/30",
+    "ceph_side": "30/30",
+    "extr_profile": "30/30",
+    "extr_rest": "28/30",
+    "extr_smile": "26/30",
+    "intr_front": "30/30",
+    "intr_left": "30/30",
+    "intr_lower": "29/30",
+    "intr_right": "30/30",
+    "intr_upper": "30/30"
+  },
+  "misclassified": [
+    {
+      "file": "ep_test_96cd1eeb-b9b4-461a-ba32-a188c603c559.jpg",
+      "gt": "extr_rest",
+      "pred": "extr_smile",
+      "conf": 0.9384
+    },
+    {
+      "file": "ep_test_bc72b5a0-0610-41d8-8ac8-de0f239fe879.jpg",
+      "gt": "extr_rest",
+      "pred": "extr_smile",
+      "conf": 0.7577
+    },
+    {
+      "file": "ep_test_2ce053ad-9cee-4132-915a-d00f7e3b1ea2.jpg",
+      "gt": "extr_smile",
+      "pred": "extr_rest",
+      "conf": 0.9977
+    },
+    {
+      "file": "ep_test_396e64ae-263a-4d59-ac57-4ec4c2619da7.jpg",
+      "gt": "extr_smile",
+      "pred": "extr_rest",
+      "conf": 0.7973
+    },
+    {
+      "file": "ep_test_d640f8af-8aea-4ddd-a4e9-c14f763be838.jpg",
+      "gt": "extr_smile",
+      "pred": "extr_rest",
+      "conf": 0.8622
+    },
+    {
+      "file": "ep_test_d7d72886-ca1b-43ce-99e8-2c5578cf48ea.jpg",
+      "gt": "extr_smile",
+      "pred": "extr_rest",
+      "conf": 0.8186
+    },
+    {
+      "file": "OHI_datasetIMG_5145_JPG.rf.e5fd4e07e85e6170963009f5c8be5267.jpg",
+      "gt": "intr_lower",
+      "pred": "intr_upper",
+      "conf": 0.8091
+    }
+  ]
+}

@@ -9,11 +9,25 @@ Then open http://localhost:8000
 """
 import argparse
 import http.server
+import os
 import socketserver
+import sys
 import webbrowser
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+
+BIG_FILE = 1 << 20
+
+
+def human(n):
+    if n < 1024:
+        return f"{n} B"
+    for unit in ("KB", "MB", "GB"):
+        n /= 1024
+        if n < 1024 or unit == "GB":
+            return f"{n:.1f} {unit}"
+    return f"{n:.1f} GB"
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -38,13 +52,53 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Cross-Origin-Embedder-Policy", "require-corp")
         super().end_headers()
 
+    def do_GET(self):
+        f = self.send_head()
+        if f is None:
+            return
+        try:
+            expected = os.fstat(f.fileno()).st_size
+        except (OSError, ValueError):
+            expected = None
+        sent = 0
+        try:
+            while True:
+                chunk = f.read(64 * 1024)
+                if not chunk:
+                    break
+                sent += len(chunk)
+                self.wfile.write(chunk)
+        except (BrokenPipeError, ConnectionResetError):
+            if expected and expected >= BIG_FILE:
+                self.log_message(
+                    "TRANSFER INCOMPLETE %s: sent %s of %s (client disconnected)",
+                    self.path, human(sent), human(expected),
+                )
+            self.close_connection = True
+            try:
+                f.close()
+            except OSError:
+                pass
+            return
+        if expected and expected >= BIG_FILE:
+            self.log_message(
+                "TRANSFER COMPLETE %s: sent %s of %s",
+                self.path, human(sent), human(expected),
+            )
+        f.close()
+
     def log_message(self, fmt, *args):
-        print(f"[{self.log_date_time_string()}] {fmt % args}")
+        print(f"[{self.log_date_time_string()}] {fmt % args}", flush=True)
 
 
 class Server(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
     daemon_threads = True
+
+    def handle_error(self, request, client_address):
+        if isinstance(sys.exc_info()[1], (BrokenPipeError, ConnectionResetError)):
+            return
+        super().handle_error(request, client_address)
 
 
 def main():
@@ -55,7 +109,7 @@ def main():
 
     with Server(("0.0.0.0", args.port), Handler) as httpd:
         url = f"http://localhost:{args.port}"
-        print(f"Serving {ROOT} at {url}  (Ctrl+C to stop)")
+        print(f"Serving {ROOT} at {url}  (Ctrl+C to stop)", flush=True)
         if not args.no_browser:
             try:
                 webbrowser.open(url)

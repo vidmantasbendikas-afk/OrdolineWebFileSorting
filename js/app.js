@@ -1,49 +1,66 @@
 /* Ordoline — Dental Photo Sorting
- * Client-side classification of dental photographs with a YOLO11-cls ONNX model.
- * Preprocessing matches Ultralytics v8.4.69 ClassificationPredictor:
- *   Resize(shortest edge -> N, bilinear, aspect preserved) -> CenterCrop(N x N)
- *   -> ToTensor (RGB, [0,1], CHW) -> Normalize(mean=0, std=1)
+ * Client-side classification of dental photographs with a ConvNeXt-Tiny ONNX model (11 classes).
+ * Preprocessing matches training:
+ *   EXIF orientation -> letterbox (longest edge -> N, bilinear, centered on black N x N canvas)
+ *   -> ToTensor (RGB, [0,1], CHW) -> Normalize(ImageNet mean/std)
  */
 "use strict";
 
 const MODEL_URL = "model/best.onnx";
 const ORT_WASM_DIR = "ort/";
 const DEFAULT_CLASSES = [
-  "ceph_front", "ceph_side", "extr_profile", "extr_rest", "extr_smile",
+  "ceph_front", "ceph_side", "extr_profile_rest", "extr_profile_smile", "extr_rest", "extr_smile",
   "intr_front", "intr_left", "intr_lower", "intr_right", "intr_upper",
 ];
 
 const CATEGORIES = [
   { id: "extraoral_frontal_rest", label: "Extraoral frontal (rest)" },
   { id: "extraoral_frontal_smile", label: "Extraoral frontal (smile)" },
-  { id: "extraoral_profile", label: "Extraoral profile" },
+  { id: "extraoral_profile_rest", label: "Extraoral profile (rest)" },
+  { id: "extraoral_profile_smile", label: "Extraoral profile (smile)" },
   { id: "intraoral_frontal", label: "Intraoral frontal" },
   { id: "intraoral_left", label: "Intraoral left" },
   { id: "intraoral_right", label: "Intraoral right" },
   { id: "intraoral_upper", label: "Intraoral upper" },
   { id: "intraoral_lower", label: "Intraoral lower" },
-  { id: "panoramic", label: "Panoramic" },
-  { id: "cephalometric", label: "Cephalometric" },
+  { id: "cephalometric_frontal", label: "Cephalometric (frontal)" },
+  { id: "cephalometric_lateral", label: "Cephalometric (lateral)" },
 ];
 
+// model class name -> UI category id
 const CLASS_TO_CATEGORY = {
   extr_rest: "extraoral_frontal_rest",
   extr_smile: "extraoral_frontal_smile",
-  extr_profile: "extraoral_profile",
+  extr_profile_rest: "extraoral_profile_rest",
+  extr_profile_smile: "extraoral_profile_smile",
   intr_front: "intraoral_frontal",
   intr_left: "intraoral_left",
   intr_right: "intraoral_right",
   intr_upper: "intraoral_upper",
   intr_lower: "intraoral_lower",
-  ceph_front: "panoramic",
-  ceph_side: "cephalometric",
+  ceph_front: "cephalometric_frontal",
+  ceph_side: "cephalometric_lateral",
 };
 
+// fallback for unknown class names; most specific patterns first
 const SUFFIX_TO_CATEGORY = (() => {
-  const map = { rest: 0, smile: 1, profile: 2, frontal: 3, left: 4, right: 5, upper: 6, lower: 7, panoramic: 8, cephalometric: 9 };
+  const rules = [
+    ["profile_rest", "extraoral_profile_rest"],
+    ["profile_smile", "extraoral_profile_smile"],
+    ["ceph_front", "cephalometric_frontal"],
+    ["ceph_side", "cephalometric_lateral"],
+    ["lateral", "cephalometric_lateral"],
+    ["rest", "extraoral_frontal_rest"],
+    ["smile", "extraoral_frontal_smile"],
+    ["front", "intraoral_frontal"],
+    ["left", "intraoral_left"],
+    ["right", "intraoral_right"],
+    ["upper", "intraoral_upper"],
+    ["lower", "intraoral_lower"],
+  ];
   return (cls) => {
-    for (const [suffix, idx] of Object.entries(map)) {
-      if (cls.includes(suffix)) return CATEGORIES[idx].id;
+    for (const [pattern, id] of rules) {
+      if (cls.includes(pattern)) return id;
     }
     return null;
   };
@@ -54,7 +71,7 @@ const state = {
   modelReady: false,
   classifying: false,
   classNames: [...DEFAULT_CLASSES],
-  inputSize: 512,
+  inputSize: 384,
   activeEP: "wasm",
   items: new Map(),
   queueOrder: [],
@@ -98,7 +115,7 @@ function sessionInputSize(session) {
     const dims = session.inputMetadata && session.inputMetadata[0] && session.inputMetadata[0].dims;
     if (Array.isArray(dims) && dims.length >= 4 && Number.isFinite(dims[2]) && dims[2] > 0) return dims[2];
   } catch { /* older ort: metadata unavailable */ }
-  return 512;
+  return 384;
 }
 
 async function loadModel() {
@@ -258,28 +275,27 @@ async function preprocess(source) {
   const w = bmp.width, h = bmp.height;
   if (!w || !h) { bmp.close && bmp.close(); throw new Error("Empty image"); }
 
-  // Resize shortest edge to `size`, aspect preserved (matches torchvision Resize(scalar)).
-  const scale = size / Math.min(w, h);
+  // Letterbox: scale longest edge to `size`, aspect preserved, centered on a black square.
+  const scale = size / Math.max(w, h);
   const nw = Math.max(1, Math.round(w * scale));
   const nh = Math.max(1, Math.round(h * scale));
-  const scaled = makeCanvas(nw, nh);
-  ctx2d(scaled).drawImage(bmp, 0, 0, nw, nh);
-  bmp.close && bmp.close();
-
-  // Center crop size x size.
-  const left = Math.round((nw - size) / 2);
-  const top = Math.round((nh - size) / 2);
+  const left = Math.floor((size - nw) / 2);
+  const top = Math.floor((size - nh) / 2);
   const crop = makeCanvas(size, size);
-  ctx2d(crop).drawImage(scaled, left, top, size, size, 0, 0, size, size);
+  const cctx = ctx2d(crop);
+  cctx.fillStyle = "#000";
+  cctx.fillRect(0, 0, size, size);
+  cctx.drawImage(bmp, left, top, nw, nh);
+  bmp.close && bmp.close();
 
   const ctx = crop.getContext("2d", { willReadFrequently: true });
   const data = ctx.getImageData(0, 0, size, size).data;
   const plane = size * size;
   const out = new Float32Array(3 * plane);
   for (let i = 0; i < plane; i++) {
-    out[i] = data[4 * i] / 255;
-    out[plane + i] = data[4 * i + 1] / 255;
-    out[2 * plane + i] = data[4 * i + 2] / 255;
+    out[i] = (data[4 * i] / 255 - 0.485) / 0.229;
+    out[plane + i] = (data[4 * i + 1] / 255 - 0.456) / 0.224;
+    out[2 * plane + i] = (data[4 * i + 2] / 255 - 0.406) / 0.225;
   }
   return out;
 }

@@ -7,6 +7,8 @@
 "use strict";
 
 const MODEL_URL = "model/best.onnx";
+const RELEASE_MODEL_URL = "https://github.com/vidmantasbendikas-afk/OrdolineWebFileSorting/releases/download/model-v1/best.onnx";
+const MIN_MODEL_BYTES = 1 << 20;
 const ORT_WASM_DIR = "ort/";
 const DEFAULT_CLASSES = [
   "ceph_front", "ceph_side", "extr_profile_rest", "extr_profile_smile", "extr_rest", "extr_smile",
@@ -118,6 +120,22 @@ function sessionInputSize(session) {
   return 384;
 }
 
+async function fetchModel() {
+  const onProgress = (loaded, total) => {
+    const pct = total ? Math.round((loaded / total) * 100) : 0;
+    dom["model-progress-bar"].style.width = `${pct}%`;
+    setModelBadge(`Loading model… ${pct}%`, "badge-wait");
+  };
+  try {
+    const buf = await fetchWithProgress(MODEL_URL, onProgress);
+    if (buf.byteLength >= MIN_MODEL_BYTES) return buf;
+    console.warn("Local model file is a stub (LFS pointer); falling back to release asset");
+  } catch (err) {
+    console.warn("Local model fetch failed, falling back to release asset:", err);
+  }
+  return await fetchWithProgress(RELEASE_MODEL_URL, onProgress);
+}
+
 async function loadModel() {
   ort.env.wasm.wasmPaths = new URL(ORT_WASM_DIR, location.href).href;
   ort.env.wasm.numThreads = 1;
@@ -125,11 +143,7 @@ async function loadModel() {
 
   let buffer;
   try {
-    buffer = await fetchWithProgress(MODEL_URL, (loaded, total) => {
-      const pct = total ? Math.round((loaded / total) * 100) : 0;
-      dom["model-progress-bar"].style.width = `${pct}%`;
-      setModelBadge(`Loading model… ${pct}%`, "badge-wait");
-    });
+    buffer = await fetchModel();
   } catch (err) {
     console.error("Model download failed:", err);
     setModelBadge("Model download failed", "badge-err");

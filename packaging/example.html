@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Ordoline Sorter — API example</title>
+  <style>
+    body { font: 14px/1.5 system-ui, sans-serif; max-width: 800px; margin: 24px auto; padding: 0 16px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+    td, th { border-bottom: 1px solid #ddd; padding: 4px 8px; text-align: left; }
+    .low { color: #b45309; }
+    .err { color: #b91c1c; }
+  </style>
+</head>
+<body>
+  <h1>Ordoline Sorter — API example</h1>
+  <p id="status">Loading model…</p>
+  <input type="file" id="photos" multiple accept="image/*" disabled />
+  <button id="stop" type="button" disabled>Stop</button>
+  <table>
+    <thead><tr><th>File</th><th>Category</th><th>Confidence</th></tr></thead>
+    <tbody id="results"></tbody>
+  </table>
+
+  <script type="module">
+    import { createSorter } from "./ordoline-sorter.js";
+
+    const status = document.getElementById("status");
+    const input = document.getElementById("photos");
+    const stop = document.getElementById("stop");
+    const rows = document.getElementById("results");
+
+    let sorter;
+    try {
+      sorter = await createSorter({
+        {{MODEL_URL_OPTION}}worker: true,
+        onProgress: ({ fraction }) => (status.textContent = `Loading model… ${Math.round(fraction * 100)}%`),
+      });
+    } catch (err) {
+      status.textContent = `Could not load the sorter (${err.code}): ${err.message}`;
+      throw err;
+    }
+    status.textContent = `Ready (${sorter.model.backend}${sorter.model.threads ? `, ${sorter.model.threads} thread(s)` : ""})`;
+    input.disabled = false;
+
+    input.addEventListener("change", async () => {
+      const stopper = new AbortController();
+      stop.onclick = () => stopper.abort();
+      stop.disabled = false;
+      input.disabled = true;
+      rows.replaceChildren();
+
+      const result = await sorter.sort(input.files, {
+        signal: stopper.signal,
+        onResult: (r, { done, total }) => {
+          status.textContent = `Sorting ${done} / ${total}`;
+          const tr = rows.insertRow();
+          tr.insertCell().textContent = r.name ?? r.id;
+          if (r.ok) {
+            tr.insertCell().textContent = r.label;
+            const c = tr.insertCell();
+            c.textContent = `${Math.round(r.confidence * 100)}%${r.lowConfidence ? " (check)" : ""}`;
+            if (r.lowConfidence) c.className = "low";
+          } else {
+            const c = tr.insertCell();
+            c.colSpan = 2;
+            c.className = "err";
+            c.textContent = `${r.error.code}: ${r.error.message}`;
+          }
+        },
+      });
+
+      const s = result.summary;
+      status.textContent = `${s.aborted ? "Stopped. " : ""}Sorted ${s.sorted}, failed ${s.failed}` +
+        (s.skipped ? `, not processed ${s.skipped}` : "") + ` (${s.timingMs} ms)`;
+      stop.disabled = true;
+      input.disabled = false;
+      input.value = "";
+    });
+  </script>
+</body>
+</html>

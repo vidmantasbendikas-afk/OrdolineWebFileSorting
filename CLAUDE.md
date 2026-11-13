@@ -18,6 +18,7 @@ docker compose run --rm tests npx playwright test --grep-invert @slow   # fast t
 docker compose run --rm tests                          # all tests incl. 300-photo accuracy (~4 min)
 docker compose run --rm tests npx tsc --noEmit         # type-check sources + tests
 docker compose run --rm reference                      # Python reference accuracy (tools/ground_truth.py)
+docker compose run --rm tests npm run package -- --model-url=https://…/best.onnx   # release/ordoline-sorter-<version>(.zip)
 docker compose build tests                             # after changing package.json / package-lock.json
 ```
 
@@ -34,6 +35,14 @@ Without Docker: Node 22 is installed via nvm but not on the default PATH
   `worker.ts` (worker proxy + host), `decode.ts`, `preprocess.ts`, `runtime.ts`, `model-cache.ts`, `categories.ts`,
   `options.ts`, `errors.ts`.
 - `src/ui/ordoline-sorter-element.ts`: optional `<ordoline-sorter>` widget; imports `../sorter/`.
+- **Release for external providers = ONE file.** `scripts/package-release.ts` bundles
+  `src/sorter/ordoline-sorter.ts` (API + worker) with esbuild into `ordoline-sorter.js`. **Never ship the model or the
+  `<ordoline-sorter>` widget to third parties.** The model stays on our CDN; `--model-url` bakes its URL in via the
+  `__ORDOLINE_MODEL_URL__` define in `options.ts`. Widget docs stay inside `<!-- repo-only -->` blocks in
+  `docs/API.md` (stripped when packaging). Provider-facing docs live in `packaging/`. Bump `version` in
+  `package.json` for a new release.
+- The bundle is also loaded inside the sorter's own Web Worker, so code in `src/sorter/` must not touch DOM globals
+  at module level.
 - The sorter core must stay **DOM-free** (runs in Web Workers). DOM code belongs in `src/ui/` or `src/app/`.
 - Browser-only: no Node/Deno/Bun support paths.
 - Tests: TypeScript Playwright in `tests/`. `tests/global-setup.ts` builds before every run. The harness page

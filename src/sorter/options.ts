@@ -6,8 +6,11 @@ export const ORT_VERSION = "1.22.0";
 export const ORT_CDN = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/`;
 
 // Where the model lives. Must be served with CORS (Access-Control-Allow-Origin) when cross-origin.
-// Set this to the CDN URL once the model is hosted; until then it resolves next to this module.
-export const MODEL_CDN_URL = new URL("model/best.onnx", import.meta.url).href;
+// The release build bakes in a URL (npm run package -- --model-url=...); otherwise it resolves next to this module.
+declare const __ORDOLINE_MODEL_URL__: string | undefined;
+export const MODEL_CDN_URL: string = typeof __ORDOLINE_MODEL_URL__ === "string"
+  ? __ORDOLINE_MODEL_URL__
+  : new URL("model/best.onnx", import.meta.url).href;
 
 export type ResolvedOptions = Required<Omit<SorterOptions, "onProgress" | "ort">> & { ort?: unknown };
 

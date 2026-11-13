@@ -1,16 +1,17 @@
 # Ordoline Sorter — API v1.0
 
-Classifies dental photos into 11 categories, fully in the browser. The core (`ordoline-sorter.js`) has no DOM
-dependency, so it runs on the page's main thread or in a Web Worker.
-Source: [`src/sorter/`](../src/sorter/) (TypeScript). Exact types: [`types.ts`](../src/sorter/types.ts); the build
-also emits `.d.ts` files next to the compiled JavaScript in `dist/sorter/`.
+Classifies dental photos into 11 categories, fully in the browser. The core has no DOM dependency, so it runs on
+the page's main thread or in a Web Worker. Types: `ordoline-sorter.d.ts` (release package).
+<!-- repo-only -->Source: [`src/sorter/`](../src/sorter/) (TypeScript); types in [`types.ts`](../src/sorter/types.ts).<!-- /repo-only -->
 
 | File | Purpose |
 |---|---|
-| `ordoline-sorter.js` | Core API entry (required, with the modules it imports from `dist/sorter/`) |
-| `ui/ordoline-sorter-element.js` | Optional `<ordoline-sorter>` drop-zone UI (browser only); imports `../sorter/` |
-| model `best.onnx` (34 MB) | Loaded from `modelUrl` |
+| `ordoline-sorter.js` | **The only file a page needs:** the sorter API and its Web Worker |
+| model `best.onnx` (34 MB) | Not in the release package: hosted by Ordoline. Loaded from the URL built into the release file, or from `modelUrl` |
 | onnxruntime-web 1.22.0 | Loaded from jsDelivr unless you inject `ort` |
+
+The release package (`npm run package`) contains this single bundled file. Inside this repository, `npm run build`
+instead emits one module per source file in `dist/sorter/` and `dist/ui/`, which the app and tests use.
 
 ## Quick start
 
@@ -151,8 +152,10 @@ reject). A photo whose model run is already in progress cannot be interrupted; i
 `classify(input, { signal })` works the same way for single calls: it resolves with error code `ABORTED` unless the
 result is already available.
 
-`<ordoline-sorter>` shows a **Stop** button while sorting, and has `el.stop()`. `sorter.dispose()` stops everything for
-good.
+`sorter.dispose()` stops everything for good.
+<!-- repo-only -->
+`<ordoline-sorter>` (this repository's widget) shows a **Stop** button while sorting, and has `el.stop()`.
+<!-- /repo-only -->
 
 ## Performance
 
@@ -217,17 +220,21 @@ Decoding, preprocessing and inference then run in a dedicated Web Worker. The AP
 `sorter.model.worker` is `true`. Without it, the page freezes for the duration of each photo's inference (measured:
 up to ~300 ms per photo; with the worker, under 10 ms). It does not make a single photo faster.
 
-The worker loads `worker.js` from the same `dist/sorter/` folder, so nothing extra needs to be deployed. That works
-when the module is served from another origin too, as long as that origin sends CORS headers. `<img>` and `<canvas>` inputs are converted to
-`ImageBitmap` on the page before sending, and relative URLs are resolved against the page. `worker: true` cannot be
-combined with `ort` (use `ortUrl`). The `<ordoline-sorter>` widget uses a worker by default.
+The worker loads the module's own file again (in the release, `ordoline-sorter.js`), so nothing extra needs to be
+deployed. That works when the module is served from another origin too, as long as that origin sends CORS headers.
+`<img>` and `<canvas>` inputs are converted to `ImageBitmap` on the page before sending, and relative URLs are
+resolved against the page. `worker: true` cannot be combined with `ort` (use `ortUrl`).
 
 You can also import the module inside your own worker; the core has no DOM dependency.
 
-## UI widget (optional)
+<!-- repo-only -->
+## UI widget (this repository only; not in the release package)
+
+`src/ui/ordoline-sorter-element.ts` compiles to `dist/ui/ordoline-sorter-element.js`, which imports the sorter from
+`dist/sorter/`. It uses a worker by default.
 
 ```html
-<script type="module" src="ui/ordoline-sorter-element.js"></script>
+<script type="module" src="dist/ui/ordoline-sorter-element.js"></script>
 <ordoline-sorter model-url="https://cdn.example.com/ordoline/best.onnx"></ordoline-sorter>
 ```
 
@@ -243,3 +250,4 @@ Attributes: `model-url`, `low-confidence-threshold`, `no-results` (hide the buil
 `no-worker` (run on the main thread instead of a Web Worker).
 Methods: `el.sort(inputs)` returns `Promise<SortResult>`; `el.stop()` stops a running sort (the widget also shows a
 Stop button while sorting).
+<!-- /repo-only -->

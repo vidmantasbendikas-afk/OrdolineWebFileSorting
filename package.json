@@ -1,5 +1,6 @@
 {
   "name": "ordoline-web-file-sorting",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,11 +12,13 @@
     "test": "playwright test",
     "test:fast": "playwright test --grep-invert @slow",
     "test:docker": "docker compose run --rm tests",
-    "reference": "docker compose run --rm reference"
+    "reference": "docker compose run --rm reference",
+    "package": "node scripts/package-release.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.65.0",
     "@types/node": "22.20.5",
+    "esbuild": "0.28.2",
     "typescript": "7.0.2"
   }
 }

@@ -43,11 +43,25 @@ keeps both the runtime and the model cached.
 
 The repository is mounted into the containers, so code edits show up on reload without rebuilding.
 
+## Release package for external providers
+
+```bash
+docker compose run --rm tests npm run package -- --model-url=https://cdn.example.com/ordoline/best.onnx
+```
+
+This creates `release/ordoline-sorter-<version>/` and a `.zip` of it. Providers include **one file**,
+`ordoline-sorter.js` (the sorter API and its worker, bundled by esbuild). **The model is not included**: it stays on
+our server, and `--model-url` bakes its URL into the file as the default (without it, providers must pass `modelUrl`;
+the provider README and example page then say so). The `<ordoline-sorter>` widget is not included either; it is for this repository's pages only. The package also contains
+TypeScript types, an example page, a provider README (`packaging/README.md`), `API.md`,
+`KNOWN_ISSUES.md` and `SHA256SUMS`. The version comes from `package.json`. `tests/release.spec.ts` builds the package
+and checks it works.
+
 ## Use the module on a website
 
 ```html
 <script type="module">
-  import { createSorter } from "/ordoline/sorter/ordoline-sorter.js";
+  import { createSorter } from "/ordoline/ordoline-sorter.js";
 
   const sorter = await createSorter({ modelUrl: "https://cdn.example.com/ordoline/best.onnx", worker: true });
   const result = await sorter.sort(fileInput.files);   // arrays, FileLists, URLs, Blobs, …
@@ -55,18 +69,8 @@ The repository is mounted into the containers, so code edits show up on reload w
 </script>
 ```
 
-Or use the ready-made drop zone:
-
-```html
-<script type="module" src="/ordoline/ui/ordoline-sorter-element.js"></script>
-<ordoline-sorter model-url="https://cdn.example.com/ordoline/best.onnx"></ordoline-sorter>
-```
-
-Build (`npm run build`, or the `build` container), then copy `dist/sorter/` (required) and `dist/ui/` (only for the
-drop zone) to the site, keeping them side by side, e.g. as `/ordoline/sorter/` and `/ordoline/ui/`. `dist/sorter/`
-holds the entry point `ordoline-sorter.js` and the internal modules it imports; both folders include `.d.ts` types for
-TypeScript users. The `.map` files are optional. Put the model in `/ordoline/sorter/model/best.onnx`, or pass
-`modelUrl`. The full input/output
+For other sites, use the release package above: copy `ordoline-sorter.js` to the site, e.g. into `/ordoline/`. The
+model comes from our model CDN (see *Model hosting*). The full input/output
 contract, error codes, events, performance and caching setup are in [`docs/API.md`](docs/API.md).
 
 ### Model hosting
@@ -140,7 +144,9 @@ See [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md): left and right side views come out swa
 | `src/sorter/categories.ts`, `options.ts`, `errors.ts` | Categories, defaults, `OrdolineError` |
 | `src/ui/ordoline-sorter-element.ts` | Optional `<ordoline-sorter>` drop-zone UI |
 | `src/app/app.ts`, `index.html` | The app |
-| `dist/` | Compiled output (generated) |
+| `dist/` | Compiled output, one module per source file (generated; used by the app and tests) |
+| `scripts/package-release.ts`, `packaging/` | Single-file release build, its provider README and example page |
+| `release/` | Release packages (generated) |
 | `docs/API.md` | API documentation |
 | `examples/widget-demo.html` | Example page using the drop-zone UI |
 | `js/testfiles.json` | List of labelled test images |

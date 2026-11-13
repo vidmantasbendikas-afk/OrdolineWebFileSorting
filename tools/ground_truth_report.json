@@ -1,63 +1,264 @@
 {
+  "model": {
+    "classes": [
+      "ceph_front",
+      "ceph_side",
+      "extr_profile_rest",
+      "extr_profile_smile",
+      "extr_rest",
+      "extr_smile",
+      "intr_front",
+      "intr_left",
+      "intr_lower",
+      "intr_right",
+      "intr_upper"
+    ],
+    "input_size": 384
+  },
   "images": 300,
-  "seconds": 16.9,
-  "ms_per_image": 56.2,
-  "output_is_softmax": true,
-  "accuracy": 0.9767,
-  "per_class": {
+  "accuracy": 0.8967,
+  "correct": 269,
+  "per_folder": {
     "ceph_front": "30/30",
     "ceph_side": "30/30",
-    "extr_profile": "30/30",
-    "extr_rest": "28/30",
-    "extr_smile": "26/30",
-    "intr_front": "30/30",
+    "extr_profile": "29/30",
+    "extr_rest": "26/30",
+    "extr_smile": "8/30",
+    "intr_front": "28/30",
     "intr_left": "30/30",
-    "intr_lower": "29/30",
     "intr_right": "30/30",
-    "intr_upper": "30/30"
+    "intr_upper": "29/30",
+    "intr_lower": "29/30"
+  },
+  "confusion": {
+    "ceph_front": {
+      "cephalometric_frontal": 30
+    },
+    "ceph_side": {
+      "cephalometric_lateral": 30
+    },
+    "extr_profile": {
+      "extraoral_profile_smile": 5,
+      "extraoral_profile_rest": 24,
+      "extraoral_frontal_rest": 1
+    },
+    "extr_rest": {
+      "extraoral_frontal_rest": 26,
+      "extraoral_frontal_smile": 3,
+      "extraoral_profile_rest": 1
+    },
+    "extr_smile": {
+      "extraoral_frontal_smile": 8,
+      "extraoral_frontal_rest": 17,
+      "extraoral_profile_smile": 3,
+      "extraoral_profile_rest": 2
+    },
+    "intr_front": {
+      "intraoral_frontal": 28,
+      "intraoral_left": 2
+    },
+    "intr_left": {
+      "intraoral_left": 30
+    },
+    "intr_right": {
+      "intraoral_right": 30
+    },
+    "intr_upper": {
+      "intraoral_upper": 29,
+      "intraoral_lower": 1
+    },
+    "intr_lower": {
+      "intraoral_lower": 29,
+      "intraoral_frontal": 1
+    }
   },
   "misclassified": [
     {
+      "file": "cfp_457_02.jpg",
+      "folder": "extr_profile",
+      "predicted": "extraoral_frontal_rest",
+      "confidence": 0.2351
+    },
+    {
+      "file": "ep_test_15c3d5fc-5c8e-40d9-842a-8164f519197d.jpg",
+      "folder": "extr_rest",
+      "predicted": "extraoral_frontal_smile",
+      "confidence": 0.768
+    },
+    {
       "file": "ep_test_96cd1eeb-b9b4-461a-ba32-a188c603c559.jpg",
-      "gt": "extr_rest",
-      "pred": "extr_smile",
-      "conf": 0.9384
+      "folder": "extr_rest",
+      "predicted": "extraoral_frontal_smile",
+      "confidence": 0.8977
     },
     {
       "file": "ep_test_bc72b5a0-0610-41d8-8ac8-de0f239fe879.jpg",
-      "gt": "extr_rest",
-      "pred": "extr_smile",
-      "conf": 0.7577
+      "folder": "extr_rest",
+      "predicted": "extraoral_frontal_smile",
+      "confidence": 0.8423
+    },
+    {
+      "file": "ep_val_54dd2316-5cfd-442d-ac52-b56206148b54.jpg",
+      "folder": "extr_rest",
+      "predicted": "extraoral_profile_rest",
+      "confidence": 0.5684
+    },
+    {
+      "file": "ep_test_0ce8aa3f-a432-4cee-94ab-8a395a61141e.jpg",
+      "folder": "extr_smile",
+      "predicted": "extraoral_frontal_rest",
+      "confidence": 0.4752
+    },
+    {
+      "file": "ep_test_18edf397-83c4-4d28-8d47-6c31d47312e9.jpg",
+      "folder": "extr_smile",
+      "predicted": "extraoral_frontal_rest",
+      "confidence": 0.8075
     },
     {
       "file": "ep_test_2ce053ad-9cee-4132-915a-d00f7e3b1ea2.jpg",
-      "gt": "extr_smile",
-      "pred": "extr_rest",
-      "conf": 0.9977
+      "folder": "extr_smile",
+      "predicted": "extraoral_frontal_rest",
+      "confidence": 0.8645
     },
     {
       "file": "ep_test_396e64ae-263a-4d59-ac57-4ec4c2619da7.jpg",
-      "gt": "extr_smile",
-      "pred": "extr_rest",
-      "conf": 0.7973
+      "folder": "extr_smile",
+      "predicted": "extraoral_frontal_rest",
+      "confidence": 0.9345
     },
     {
-      "file": "ep_test_d640f8af-8aea-4ddd-a4e9-c14f763be838.jpg",
-      "gt": "extr_smile",
-      "pred": "extr_rest",
-      "conf": 0.8622
+      "file": "ep_test_40d7443c-b145-4aa1-babe-0f04329f35d1.jpg",
+      "folder": "extr_smile",
+      "predicted": "extraoral_profile_smile",
+      "confidence": 0.2699
+    },
+    {
+      "file": "ep_test_5945d2c6-07bb-4c72-a620-9169655d1447.jpg",
+      "folder": "extr_smile",
+      "predicted": "extraoral_profile_smile",
+      "confidence": 0.8794
+    },
+    {
+      "file": "ep_test_62c74558-7059-4c6b-bbfc-44988eeaff13.jpg",
+      "folder": "extr_smile",
+      "predicted": "extraoral_profile_rest",
+      "confidence": 0.2708
+    },
+    {
+      "file": "ep_test_968c838c-ed2b-4785-b5c5-4c697e90b6ac.jpg",
+      "folder": "extr_smile",
+      "predicted": "extraoral_frontal_rest",
+      "confidence": 0.9462
+    },
+    {
+      "file": "ep_test_98bd1915-f50a-4744-9273-cee997f1b710.jpg",
+      "folder": "extr_smile",
+      "predicted": "extraoral_frontal_rest",
+      "confidence": 0.5643
+    },
+    {
+      "file": "ep_test_a28bb7d5-85bc-4df4-afff-8518506768d7.jpg",
+      "folder": "extr_smile",
+      "predicted": "extraoral_frontal_rest",
+      "confidence": 0.7846
+    },
+    {
+      "file": "ep_test_ae8f5100-15c6-4ad6-8030-8709483e31ef.jpg",
+      "folder": "extr_smile",
+      "predicted": "extraoral_frontal_rest",
+      "confidence": 0.9039
+    },
+    {
+      "file": "ep_test_b0904557-a308-4e53-b47f-fb820d36a031.jpg",
+      "folder": "extr_smile",
+      "predicted": "extraoral_frontal_rest",
+      "confidence": 0.7597
     },
     {
       "file": "ep_test_d7d72886-ca1b-43ce-99e8-2c5578cf48ea.jpg",
-      "gt": "extr_smile",
-      "pred": "extr_rest",
-      "conf": 0.8186
+      "folder": "extr_smile",
+      "predicted": "extraoral_frontal_rest",
+      "confidence": 0.7949
     },
     {
-      "file": "OHI_datasetIMG_5145_JPG.rf.e5fd4e07e85e6170963009f5c8be5267.jpg",
-      "gt": "intr_lower",
-      "pred": "intr_upper",
-      "conf": 0.8091
+      "file": "ep_test_daa8a091-e561-416a-ae8d-9f728893e749.jpg",
+      "folder": "extr_smile",
+      "predicted": "extraoral_frontal_rest",
+      "confidence": 0.7593
+    },
+    {
+      "file": "ep_test_f2b154af-7ba6-4e33-8887-f1b93b78bf04.jpg",
+      "folder": "extr_smile",
+      "predicted": "extraoral_profile_smile",
+      "confidence": 0.3566
+    },
+    {
+      "file": "ep_val_0e96d41f-32b0-4119-b55e-e8747fbdb07d.jpg",
+      "folder": "extr_smile",
+      "predicted": "extraoral_frontal_rest",
+      "confidence": 0.9068
+    },
+    {
+      "file": "ep_val_1335f08a-931c-475d-a2b4-75dc29488d26.jpg",
+      "folder": "extr_smile",
+      "predicted": "extraoral_frontal_rest",
+      "confidence": 0.5459
+    },
+    {
+      "file": "ep_val_72f705c9-a566-4c1b-ae99-7b8494832698.jpg",
+      "folder": "extr_smile",
+      "predicted": "extraoral_frontal_rest",
+      "confidence": 0.5939
+    },
+    {
+      "file": "ep_val_78f50f81-ff52-4b67-959b-2bd32213c1db.jpg",
+      "folder": "extr_smile",
+      "predicted": "extraoral_profile_rest",
+      "confidence": 0.3607
+    },
+    {
+      "file": "ep_val_bb39eeaf-a6a3-481b-9a8d-7177b409f71d.jpg",
+      "folder": "extr_smile",
+      "predicted": "extraoral_frontal_rest",
+      "confidence": 0.9229
+    },
+    {
+      "file": "ep_val_c04c68cb-d10f-4bf6-b7bd-f26f8f1b9131.jpg",
+      "folder": "extr_smile",
+      "predicted": "extraoral_frontal_rest",
+      "confidence": 0.8021
+    },
+    {
+      "file": "ep_val_c17fbf66-cdbc-4ddb-9c61-b3f6ece5da2d.jpg",
+      "folder": "extr_smile",
+      "predicted": "extraoral_frontal_rest",
+      "confidence": 0.5388
+    },
+    {
+      "file": "OHI_datasetIMG_3495_JPG.rf.4ccbc8f554744f9a4df5c5a0d2c6cfc1.jpg",
+      "folder": "intr_front",
+      "predicted": "intraoral_left",
+      "confidence": 0.7082
+    },
+    {
+      "file": "OHI_datasetgallery_-130264893_penta_front_m_jpg.rf.3a0f6ef077dacec9a95d125c52f7b488.jpg",
+      "folder": "intr_front",
+      "predicted": "intraoral_left",
+      "confidence": 0.5427
+    },
+    {
+      "file": "OHI_datasetIMG_2152_JPG.rf.a65907b2a5e6d25dfaae7463b513ebbf.jpg",
+      "folder": "intr_lower",
+      "predicted": "intraoral_frontal",
+      "confidence": 0.5152
+    },
+    {
+      "file": "000373_OHI_datasetIMG_4601_JPG.rf.ddb037d197f22a9ae3967de352fc63f6.jpg",
+      "folder": "intr_upper",
+      "predicted": "intraoral_lower",
+      "confidence": 0.7905
     }
-  ]
+  ],
+  "ms_per_image": 52.5
 }

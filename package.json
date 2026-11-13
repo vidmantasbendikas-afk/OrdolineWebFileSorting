@@ -1,0 +1,19 @@
+{
+  "name": "ordoline-web-file-sorting",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "up": "docker compose up -d",
+    "down": "docker compose down",
+    "test": "playwright test",
+    "test:fast": "playwright test --grep-invert @slow",
+    "test:docker": "docker compose run --rm tests",
+    "reference": "docker compose run --rm reference",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.0",
+    "@types/node": "22.20.5",
+    "typescript": "7.0.2"
+  }
+}

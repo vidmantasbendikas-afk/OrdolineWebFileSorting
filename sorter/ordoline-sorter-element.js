@@ -3,7 +3,8 @@
  *   <script type="module" src="ordoline-sorter-element.js"></script>
  *   <ordoline-sorter model-url="https://cdn.example.com/best.onnx"></ordoline-sorter>
  *
- * Attributes: model-url, low-confidence-threshold, no-results (hide built-in result grid)
+ * Attributes: model-url, low-confidence-threshold, no-results (hide built-in result grid),
+ *             no-worker (run on the page's main thread instead of a Web Worker)
  * Methods:    sort(inputs) -> Promise<SortResult>, clear(), ready (Promise)
  * Events:     ordoline-ready, ordoline-progress, ordoline-result, ordoline-done, ordoline-error
  */
@@ -78,6 +79,7 @@ export class OrdolineSorterElement extends HTMLElement {
     };
     const url = this.getAttribute("model-url");
     if (url) opts.modelUrl = new URL(url, document.baseURI).href;
+    opts.worker = !this.hasAttribute("no-worker");
     const th = parseFloat(this.getAttribute("low-confidence-threshold"));
     if (Number.isFinite(th)) opts.lowConfidenceThreshold = th;
 

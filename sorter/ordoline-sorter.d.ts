@@ -1,7 +1,7 @@
 /**
  * Ordoline Sorter — API v1.0
- * Classifies dental photos into 11 categories. Environment-neutral core (no DOM):
- * browser main thread, Web Workers, Node.js / Deno / Bun.
+ * Classifies dental photos into 11 categories in the browser.
+ * No DOM dependency: runs on the page's main thread or in a Web Worker.
  */
 
 export const API_VERSION: "1.0";
@@ -32,7 +32,7 @@ export const CATEGORIES: readonly Category[];
 
 /* ================================ Input ================================= */
 
-/** Already-decoded pixels. Works everywhere, including Node without a decoder. */
+/** Already-decoded pixels, e.g. from your own canvas or image pipeline. */
 export interface RawImage {
   /** Row-major RGB or RGBA bytes, top-left first, already in display orientation. */
   data: Uint8Array | Uint8ClampedArray;
@@ -47,10 +47,8 @@ export type EncodedImage = Blob | File | ArrayBuffer | Uint8Array;
 
 /**
  * Anything the sorter accepts as one image.
- * - RawImage / ImageData:   all environments
- * - EncodedImage, URL:       browsers & workers built in; elsewhere requires `options.decode`
- * - URL string:              fetched (http(s):, data:, blob:, and file: in Node)
- * - Browser image sources:   main thread / workers only
+ * - URL string: fetched (http(s):, data:, blob:); cross-origin URLs need CORS
+ * - HTMLImageElement / HTMLCanvasElement: main thread only (not available in workers)
  */
 export type ImageInput =
   | RawImage
@@ -120,6 +118,7 @@ export type ErrorCode =
   | "MODEL_LOAD_FAILED"   // createSorter(): model download/session creation failed
   | "RUNTIME_LOAD_FAILED" // createSorter(): onnxruntime could not be loaded
   | "ABORTED"             // sort() aborted via signal
+  | "INVALID_OPTIONS"     // createSorter(): options cannot be combined (worker + ort)
   | "BUSY";               // <ordoline-sorter> only: a sort is already running
 
 export interface ClassificationFailure extends ResultBase {
@@ -132,8 +131,14 @@ export type ClassificationResult = ClassificationSuccess | ClassificationFailure
 
 export interface ModelInfo {
   readonly url: string | null;
-  /** Execution provider in use: "webgpu", "wasm", or "default" (runtime's own, e.g. CPU in Node). */
+  /** Where the model bytes came from: "network" (downloaded) or "cache" (Cache API copy: ETag unchanged, or offline). */
+  readonly source: "network" | "cache";
+  /** Execution provider in use: "webgpu" or "wasm". */
   readonly backend: string;
+  /** WASM threads in use (null on WebGPU). More than 1 only on cross-origin isolated pages (COOP + COEP headers). */
+  readonly threads: number | null;
+  /** True when the sorter runs in a Web Worker (options.worker). */
+  readonly worker: boolean;
   readonly inputSize: number;
   readonly classes: readonly string[];
 }
@@ -159,18 +164,26 @@ export interface SortResult {
 export interface SorterOptions {
   /** Model URL (must allow CORS in browsers). Default: built-in CDN URL. */
   modelUrl?: string;
-  /** Model bytes instead of a URL (e.g. fs.readFileSync in Node). */
-  model?: ArrayBuffer | Uint8Array;
-  /** An onnxruntime module to use (onnxruntime-web or onnxruntime-node). Default: onnxruntime-web 1.22.0 from jsDelivr. */
+  /**
+   * Cache API name for a persistent model copy, revalidated by ETag (or Last-Modified) on every load. Default
+   * "ordoline-sorter-model"; false disables. Cross-origin the CDN must send `Access-Control-Expose-Headers: ETag`.
+   */
+  modelCache?: string | false;
+  /** Your own onnxruntime-web module (e.g. bundled via npm). Default: onnxruntime-web 1.22.0 from jsDelivr. */
   ort?: unknown;
   /** ESM URL to import onnxruntime-web from when `ort` is not given. */
   ortUrl?: string;
   /** Directory URL for onnxruntime-web .wasm files. */
   wasmPaths?: string;
-  /** Default: ["webgpu", "wasm"] if WebGPU exists, else ["wasm"]; runtime default as last resort. */
+  /** Default: ["webgpu", "wasm"]; "webgpu" is skipped when no GPU adapter is available. */
   executionProviders?: string[];
-  /** Decoder for encoded images where none is built in (Node). Must apply EXIF orientation. */
-  decode?: (bytes: Uint8Array) => Promise<RawImage> | RawImage;
+  /**
+   * Run decoding, preprocessing and inference in a Web Worker so the page never freezes. Same API and results.
+   * Not combinable with `ort`. Default false.
+   */
+  worker?: boolean;
+  /** WASM inference threads. Default: up to 4 on cross-origin isolated pages, else 1. */
+  numThreads?: number;
   /** Default 0.6. */
   lowConfidenceThreshold?: number;
   /** Default 3. */

@@ -1,10 +1,9 @@
 /* Ordoline Sorter — dental photo classifier core (ES module). API v1 — see API.md / ordoline-sorter.d.ts.
  *
- * Environment-neutral: no DOM. Runs on a browser main thread, in Web Workers, and in Node/Deno/Bun.
- *   - Inference: onnxruntime (web from jsDelivr by default, or inject any build via options.ort)
- *   - Preprocessing: pure JS (PIL-style antialiased bilinear letterbox), identical in every environment
- *   - Image decoding: built in where createImageBitmap + OffscreenCanvas exist (browsers, workers);
- *     elsewhere pass decoded pixels (RawImage) or provide options.decode (e.g. with sharp in Node)
+ * Browser-only, no DOM dependency: runs on the page's main thread or in a Web Worker.
+ *   - Inference: onnxruntime-web (from jsDelivr by default, or pass your own build via options.ort)
+ *   - Image decoding: createImageBitmap + OffscreenCanvas
+ *   - Preprocessing: pure JS (PIL-style antialiased bilinear letterbox)
  *
  * Preprocessing matches training:
  *   EXIF orientation -> letterbox (longest edge -> N, bilinear, centered on black N x N)
@@ -15,7 +14,7 @@
 
 export const API_VERSION = "1.0";
 
-// onnxruntime-web ESM build from jsDelivr (CORS-enabled, version-pinned; identical to the files in ../ort/).
+// onnxruntime-web ESM build from jsDelivr (CORS-enabled, version-pinned).
 const ORT_VERSION = "1.22.0";
 const ORT_CDN = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/`;
 
@@ -27,7 +26,10 @@ const DEFAULTS = {
   modelUrl: MODEL_CDN_URL,
   ortUrl: `${ORT_CDN}ort.all.min.mjs`,
   wasmPaths: null, // null: ORT_CDN when ort is loaded from ortUrl, otherwise the runtime's own default
-  executionProviders: null, // null: ["webgpu", "wasm"] if WebGPU exists, else ["wasm"]; runtime default as last resort
+  executionProviders: null, // null: ["webgpu", "wasm"]; "webgpu" is skipped without a GPU adapter
+  worker: false, // true: run decoding + inference in a Web Worker so the page never freezes
+  numThreads: null, // null: several threads when the page is cross-origin isolated, else 1
+  modelCache: "ordoline-sorter-model", // Cache API name for the persistent model copy; false to disable
   lowConfidenceThreshold: 0.6,
   topK: 3,
 };
@@ -110,14 +112,12 @@ async function loadOrt(opts) {
 }
 
 async function readUrl(url, onProgress) {
-  if (url.startsWith("file:")) { // Node/Deno/Bun: fetch() does not read file: URLs everywhere
-    const { readFile } = await import("node:fs/promises");
-    const buf = await readFile(new URL(url));
-    onProgress?.(buf.byteLength, buf.byteLength);
-    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-  }
   const res = await fetch(url);
   if (!res.ok) throw new Error(`${url}: ${res.status} ${res.statusText}`);
+  return readBody(res, onProgress);
+}
+
+async function readBody(res, onProgress) {
   const total = Number(res.headers.get("content-length")) || 0;
   if (!res.body || !onProgress) return await res.arrayBuffer();
   const reader = res.body.getReader();
@@ -134,6 +134,61 @@ async function readUrl(url, onProgress) {
   let off = 0;
   for (const c of chunks) { out.set(c, off); off += c.length; }
   return out.buffer;
+}
+
+/* Model cache: a persistent copy in the Cache API, revalidated against the server's ETag on every load.
+ *   - unchanged ETag  -> body download is cancelled, cached copy is used
+ *   - changed ETag    -> new model is downloaded and replaces the cached copy (after it loads successfully)
+ *   - network failure -> cached copy is used (offline)
+ * Cross-origin, ETag is only readable with `Access-Control-Expose-Headers: ETag`; Last-Modified is the fallback.
+ * Without Cache API (insecure http: pages, some private modes) this is a plain download. */
+const VALIDATOR_HEADER = "x-ordoline-validator";
+
+async function openModelCache(name) {
+  if (!name || typeof caches === "undefined") return null;
+  try { return await caches.open(name); } catch { return null; }
+}
+
+async function loadModelBytes(url, cacheName, onProgress) {
+  const cache = await openModelCache(cacheName);
+  let cached = null;
+  if (cache) { try { cached = await cache.match(url); } catch { cached = null; } }
+  const useCached = async () => {
+    const buffer = await cached.arrayBuffer();
+    onProgress?.(buffer.byteLength, buffer.byteLength);
+    return { buffer, source: "cache" };
+  };
+
+  let res;
+  try {
+    res = await fetch(url);
+  } catch (err) {
+    if (cached) return useCached(); // offline / server unreachable
+    throw err;
+  }
+  if (!res.ok) {
+    if (cached) { res.body?.cancel().catch(() => {}); return useCached(); }
+    throw new Error(`${url}: ${res.status} ${res.statusText}`);
+  }
+
+  const validator = res.headers.get("etag") || res.headers.get("last-modified");
+  if (cached && validator && cached.headers.get(VALIDATOR_HEADER) === validator) {
+    res.body?.cancel().catch(() => {});
+    return useCached();
+  }
+
+  const buffer = await readBody(res, onProgress);
+  // Stored only after the session is created from it, so a broken download never gets cached.
+  const commit = cache ? async (bytes) => {
+    try {
+      if (!validator) { await cache.delete(url); return; } // cannot revalidate: do not keep a copy
+      await cache.put(url, new Response(bytes, { headers: { "content-type": "application/octet-stream", [VALIDATOR_HEADER]: validator } }));
+      for (const req of await cache.keys()) if (req.url !== url) await cache.delete(req); // drop old model URLs
+    } catch (err) {
+      console.warn("[ordoline] model not cached:", err?.name || err); // e.g. QuotaExceededError
+    }
+  } : null;
+  return { buffer, source: "network", commit };
 }
 
 function parseClassNames(meta) {
@@ -210,22 +265,14 @@ async function builtinDecode(source) {
   }
 }
 
-async function decode(image, userDecode) {
+async function decode(image) {
   if (isRawImage(image)) return image;
-  if (typeof image === "string" || isBlob(image) || isBytes(image)) {
-    if (userDecode) {
-      const raw = await userDecode(await encodedBytes(image));
-      if (!isRawImage(raw)) throw new OrdolineError("DECODE_FAILED", "options.decode did not return {data, width, height}");
-      return raw;
-    }
-    if (!hasBuiltinDecoder()) {
-      throw new OrdolineError("UNSUPPORTED_INPUT", "No image decoder in this environment: pass {data, width, height} pixels or options.decode");
-    }
-    if (isBlob(image)) return builtinDecode(image);
-    return builtinDecode(new Blob([await encodedBytes(image)]));
+  if (!hasBuiltinDecoder()) {
+    throw new OrdolineError("UNSUPPORTED_INPUT", "This browser lacks createImageBitmap/OffscreenCanvas: pass {data, width, height} pixels");
   }
+  if (isBlob(image)) return builtinDecode(image);
+  if (typeof image === "string" || isBytes(image)) return builtinDecode(new Blob([await encodedBytes(image)]));
   // HTMLImageElement, canvas, ImageBitmap, VideoFrame, ...
-  if (!hasBuiltinDecoder()) throw new OrdolineError("UNSUPPORTED_INPUT", `Unsupported input type: ${Object.prototype.toString.call(image)}`);
   if (typeof image.decode === "function" && "naturalWidth" in image) {
     try { await image.decode(); } catch (err) { throw new OrdolineError("DECODE_FAILED", "Image element could not be decoded", err); }
   }
@@ -313,22 +360,72 @@ function preprocess(raw, size) {
   return out;
 }
 
+function defaultThreads() {
+  // Measured on a 22-core machine: 1 thread 570 ms, 2: 360 ms, 4: 260 ms, 8+: no further gain.
+  const cores = globalThis.navigator?.hardwareConcurrency || 4;
+  return Math.max(1, Math.min(4, cores - 1)); // leave a core for the page
+}
+
+async function hasWebGpuAdapter() {
+  try {
+    return !!(await globalThis.navigator?.gpu?.requestAdapter());
+  } catch {
+    return false;
+  }
+}
+
+/* ---------------- Sorting (shared by in-thread and worker sorters) ---------------- */
+
+async function sortWith(classify, model, inputs, callOpts = {}) {
+  const list = Array.from(inputs);
+  const results = [];
+  const byCategory = Object.fromEntries(CATEGORIES.map((c) => [c.id, []]));
+  const t0 = performance.now();
+  for (let i = 0; i < list.length; i++) {
+    if (callOpts.signal?.aborted) throw new OrdolineError("ABORTED", "Sort was aborted", callOpts.signal.reason);
+    const r = { index: i, ...(await classify(list[i], { topK: callOpts.topK, id: String(i) })) };
+    results.push(r);
+    if (r.ok) byCategory[r.category].push(r.id);
+    callOpts.onResult?.(r, { done: i + 1, total: list.length });
+  }
+  const conf = new Map(results.map((r) => [r.id, r.ok ? r.confidence : 0]));
+  for (const id in byCategory) byCategory[id].sort((a, b) => conf.get(b) - conf.get(a));
+  const failed = results.filter((r) => !r.ok).length;
+  return {
+    apiVersion: API_VERSION,
+    model,
+    results,
+    byCategory,
+    summary: {
+      total: results.length,
+      sorted: results.length - failed,
+      failed,
+      lowConfidence: results.filter((r) => r.ok && r.lowConfidence).length,
+      timingMs: Math.round(performance.now() - t0),
+    },
+  };
+}
+
 /* ---------------- Public API ---------------- */
 
 const sorters = new Map();
 
 /**
  * Load the runtime + model once and return a Sorter. Calls with the same options share one instance
- * (options holding objects/functions such as ort, model or decode always create a new instance).
+ * (passing options.ort always creates a new instance).
  * Rejects with OrdolineError code RUNTIME_LOAD_FAILED / MODEL_LOAD_FAILED.
  */
 export function createSorter(options = {}) {
   const { onProgress, ...rest } = options;
   const opts = { ...DEFAULTS, ...rest };
-  const cacheable = !opts.ort && !opts.model && !opts.decode;
+  if (opts.worker && opts.ort) {
+    return Promise.reject(new OrdolineError("INVALID_OPTIONS", "options.ort cannot be passed to a worker; use ortUrl instead"));
+  }
+  const useWorker = opts.worker && typeof Worker === "function";
+  const cacheable = !opts.ort;
   const key = cacheable ? JSON.stringify(opts) : null;
   if (key && sorters.has(key)) return sorters.get(key);
-  const p = buildSorter(opts, onProgress, key);
+  const p = useWorker ? buildWorkerSorter(opts, onProgress, key) : buildSorter(opts, onProgress, key);
   if (key) {
     p.catch(() => sorters.delete(key)); // allow retry after failure
     sorters.set(key, p);
@@ -346,19 +443,15 @@ async function buildSorter(opts, onProgress, cacheKey) {
   if (ort.env?.wasm) {
     const wasmPaths = opts.wasmPaths ?? (fromCdn ? ORT_CDN : null);
     if (wasmPaths) ort.env.wasm.wasmPaths = wasmPaths;
-    ort.env.wasm.numThreads = 1; // no COOP/COEP headers required on the host page
+    // Multi-threaded WASM needs SharedArrayBuffer, i.e. a cross-origin isolated page (COOP + COEP headers).
+    ort.env.wasm.numThreads = opts.numThreads ?? (globalThis.crossOriginIsolated ? defaultThreads() : 1);
   }
   if (ort.env) ort.env.logLevel = "error";
 
-  let buffer;
+  let buffer, source, commit = null;
   try {
-    if (opts.model) {
-      buffer = opts.model instanceof ArrayBuffer ? opts.model
-        : opts.model.buffer.slice(opts.model.byteOffset, opts.model.byteOffset + opts.model.byteLength);
-      onProgress?.({ loaded: buffer.byteLength, total: buffer.byteLength, fraction: 1 });
-    } else {
-      buffer = await readUrl(opts.modelUrl, (loaded, total) => onProgress?.({ loaded, total, fraction: total ? loaded / total : 0 }));
-    }
+    ({ buffer, source, commit = null } = await loadModelBytes(opts.modelUrl, opts.modelCache,
+      (loaded, total) => onProgress?.({ loaded, total, fraction: total ? loaded / total : 0 })));
   } catch (err) {
     throw new OrdolineError("MODEL_LOAD_FAILED", `Could not load model from ${opts.modelUrl}`, err);
   }
@@ -366,25 +459,33 @@ async function buildSorter(opts, onProgress, cacheKey) {
     throw new OrdolineError("MODEL_LOAD_FAILED", `Model is only ${buffer.byteLength} bytes (Git LFS pointer?)`);
   }
 
-  const eps = opts.executionProviders ?? (globalThis.navigator?.gpu ? ["webgpu", "wasm"] : ["wasm"]);
-  const attempts = [...eps.map((_, i) => eps.slice(i)), null]; // null: runtime default (e.g. "cpu" in onnxruntime-node)
+  // onnxruntime silently drops "webgpu" when no GPU adapter exists, so check first to report the real backend.
+  const gpuUsable = await hasWebGpuAdapter();
+  let eps = opts.executionProviders ?? ["webgpu", "wasm"];
+  if (!gpuUsable) eps = eps.filter((ep) => ep !== "webgpu");
+  if (!eps.length) eps = ["wasm"];
+  const attempts = eps.map((_, i) => eps.slice(i)); // e.g. [webgpu, wasm], then [wasm]
+  // keep a private copy for the cache: the runtime may take ownership of the bytes it is given
+  const cacheCopy = commit ? buffer.slice(0) : null;
   let session = null, backend = null, lastErr;
   for (const list of attempts) {
     try {
-      session = await ort.InferenceSession.create(new Uint8Array(buffer), list ? { executionProviders: list } : {});
-      backend = list ? list[0] : "default";
+      session = await ort.InferenceSession.create(new Uint8Array(buffer), { executionProviders: list });
+      backend = list[0];
       break;
     } catch (err) {
       lastErr = err;
     }
   }
   if (!session) throw new OrdolineError("MODEL_LOAD_FAILED", "Could not create ONNX session", lastErr);
+  if (commit) await commit(cacheCopy);
 
   let classNames = DEFAULT_CLASSES;
   try { classNames = parseClassNames(await session.metadata) || classNames; } catch { /* keep defaults */ }
   const inputSize = sessionInputSize(session);
   const classCategory = classNames.map(classToCategory);
-  const model = Object.freeze({ url: opts.model ? null : opts.modelUrl, backend, inputSize, classes: Object.freeze([...classNames]) });
+  const threads = backend === "wasm" ? (ort.env?.wasm?.numThreads || 1) : null;
+  const model = Object.freeze({ url: opts.modelUrl, source, backend, threads, worker: false, inputSize, classes: Object.freeze([...classNames]) });
 
   // ORT sessions must not run concurrently; serialize inference calls.
   let chain = Promise.resolve();
@@ -414,7 +515,7 @@ async function buildSorter(opts, onProgress, cacheKey) {
     const t0 = performance.now();
     try {
       if (disposed) throw new OrdolineError("DISPOSED", "Sorter has been disposed");
-      const raw = await decode(image, opts.decode);
+      const raw = await decode(image);
       const data = preprocess(raw, inputSize);
       const probs = await exclusive(async () => {
         if (disposed) throw new OrdolineError("DISPOSED", "Sorter has been disposed");
@@ -446,35 +547,7 @@ async function buildSorter(opts, onProgress, cacheKey) {
     }
   }
 
-  async function sort(inputs, callOpts = {}) {
-    const list = Array.from(inputs);
-    const results = [];
-    const byCategory = Object.fromEntries(CATEGORIES.map((c) => [c.id, []]));
-    const t0 = performance.now();
-    for (let i = 0; i < list.length; i++) {
-      if (callOpts.signal?.aborted) throw callOpts.signal.reason ?? new OrdolineError("ABORTED", "Sort was aborted");
-      const r = { index: i, ...(await classify(list[i], { topK: callOpts.topK, id: String(i) })) };
-      results.push(r);
-      if (r.ok) byCategory[r.category].push(r.id);
-      callOpts.onResult?.(r, { done: i + 1, total: list.length });
-    }
-    const conf = new Map(results.map((r) => [r.id, r.ok ? r.confidence : 0]));
-    for (const id in byCategory) byCategory[id].sort((a, b) => conf.get(b) - conf.get(a));
-    const failed = results.filter((r) => !r.ok).length;
-    return {
-      apiVersion: API_VERSION,
-      model,
-      results,
-      byCategory,
-      summary: {
-        total: results.length,
-        sorted: results.length - failed,
-        failed,
-        lowConfidence: results.filter((r) => r.ok && r.lowConfidence).length,
-        timingMs: Math.round(performance.now() - t0),
-      },
-    };
-  }
+  const sort = (inputs, callOpts) => sortWith(classify, model, inputs, callOpts);
 
   function dispose() {
     if (disposed) return;
@@ -484,4 +557,144 @@ async function buildSorter(opts, onProgress, cacheKey) {
   }
 
   return Object.freeze({ apiVersion: API_VERSION, model, categories: CATEGORIES, classify, sort, dispose });
+}
+
+/* ---------------- Worker mode ---------------- *
+ * createSorter({ worker: true }) runs decoding, preprocessing and inference in a dedicated Web Worker, so the page
+ * stays responsive. The worker loads this same file; a tiny blob: wrapper makes that work even when this module is
+ * served from another origin (a CDN). Page side: a proxy with the same Sorter API. Worker side: startWorkerHost().
+ */
+
+const WORKER_NAME = "ordoline-sorter";
+const MSG = "ordoline-sorter/v1";
+
+const isOfType = (v, name) => typeof globalThis[name] === "function" && v instanceof globalThis[name];
+
+/** Page side: turn an input into something that can be posted to the worker. */
+async function toTransferable(image) {
+  if (typeof image === "string") {
+    // relative URLs must be resolved against the page, not the worker's blob: URL
+    if (/^(data|blob):/.test(image)) return image;
+    try { return new URL(image, globalThis.document?.baseURI ?? globalThis.location?.href).href; } catch { return image; }
+  }
+  if (isOfType(image, "HTMLImageElement")) {
+    try { await image.decode(); } catch (err) { throw new OrdolineError("DECODE_FAILED", "Image element could not be decoded", err); }
+    return createImageBitmap(image);
+  }
+  if (isOfType(image, "HTMLCanvasElement") || isOfType(image, "OffscreenCanvas") || isOfType(image, "SVGImageElement")
+      || isOfType(image, "HTMLVideoElement")) {
+    try { return await createImageBitmap(image); } catch (err) { throw new OrdolineError("DECODE_FAILED", "Image could not be read", err); }
+  }
+  return image; // Blob/File, bytes, ImageBitmap, ImageData, VideoFrame, raw pixels: structured-cloneable
+}
+
+async function buildWorkerSorter(opts, onProgress, cacheKey) {
+  const moduleUrl = import.meta.url;
+  const wrapper = URL.createObjectURL(new Blob([`import ${JSON.stringify(moduleUrl)};`], { type: "text/javascript" }));
+  const worker = new Worker(wrapper, { type: "module", name: WORKER_NAME });
+  URL.revokeObjectURL(wrapper);
+
+  const pending = new Map(); // reqId -> resolve(result)
+  let nextReq = 0, autoId = 0, disposed = false, failure = null;
+
+  const failAll = (code, message) => {
+    failure = { code, message };
+    for (const [, done] of pending) done(null);
+    pending.clear();
+  };
+
+  const ready = new Promise((resolve, reject) => {
+    worker.onmessage = (e) => {
+      const m = e.data;
+      if (m?.ns !== MSG) return;
+      if (m.type === "progress") onProgress?.(m.progress);
+      else if (m.type === "ready") resolve(m.model);
+      else if (m.type === "init-error") reject(new OrdolineError(m.error.code, m.error.message));
+      else if (m.type === "result") { pending.get(m.reqId)?.(m.result); pending.delete(m.reqId); }
+    };
+    worker.onerror = (e) => {
+      e.preventDefault?.();
+      const msg = `Sorter worker failed: ${e.message || "could not start (check that the module URL is reachable with CORS)"}`;
+      reject(new OrdolineError("RUNTIME_LOAD_FAILED", msg));
+      failAll("INFERENCE_FAILED", msg);
+    };
+  });
+
+  const { worker: _w, ...workerOpts } = opts;
+  worker.postMessage({ ns: MSG, type: "init", options: workerOpts });
+  let remoteModel;
+  try {
+    remoteModel = await ready;
+  } catch (err) {
+    worker.terminate();
+    throw err;
+  }
+  const model = Object.freeze({ ...remoteModel, worker: true });
+
+  async function classify(input, callOpts = {}) {
+    const { image, id, name } = unwrap(input);
+    const base = { id: id ?? callOpts.id ?? `img-${++autoId}`, name: name ?? inferName(image) };
+    const fail = (code, message) => ({ ...base, ok: false, error: { code, message } });
+    if (disposed) return fail("DISPOSED", "Sorter has been disposed");
+    if (failure) return fail(failure.code, failure.message);
+    let payload;
+    try {
+      payload = await toTransferable(image);
+    } catch (err) {
+      return fail(err.code || "DECODE_FAILED", err.message);
+    }
+    const reqId = ++nextReq;
+    const result = new Promise((resolve) => pending.set(reqId, resolve));
+    try {
+      worker.postMessage({ ns: MSG, type: "classify", reqId, input: { image: payload, ...base }, topK: callOpts.topK });
+    } catch (err) {
+      pending.delete(reqId);
+      return fail("UNSUPPORTED_INPUT", `Input cannot be sent to the worker: ${err?.name || err}`);
+    }
+    return (await result) ?? fail(failure?.code ?? "INFERENCE_FAILED", failure?.message ?? "Sorter worker stopped");
+  }
+
+  return Object.freeze({
+    apiVersion: API_VERSION,
+    model,
+    categories: CATEGORIES,
+    classify,
+    sort: (inputs, callOpts) => sortWith(classify, model, inputs, callOpts),
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      if (cacheKey) sorters.delete(cacheKey);
+      worker.postMessage({ ns: MSG, type: "dispose" });
+      failAll("DISPOSED", "Sorter has been disposed");
+      setTimeout(() => worker.terminate(), 1000);
+    },
+  });
+}
+
+/** Worker side: serve requests from buildWorkerSorter(). */
+function startWorkerHost() {
+  let sorter = null;
+  const post = (m) => self.postMessage({ ns: MSG, ...m });
+  self.addEventListener("message", async (e) => {
+    const m = e.data;
+    if (m?.ns !== MSG) return;
+    if (m.type === "init") {
+      sorter = createSorter({ ...m.options, worker: false, onProgress: (progress) => post({ type: "progress", progress }) });
+      try {
+        post({ type: "ready", model: (await sorter).model });
+      } catch (err) {
+        post({ type: "init-error", error: { code: err.code || "MODEL_LOAD_FAILED", message: err.message } });
+      }
+    } else if (m.type === "classify") {
+      const result = await (await sorter).classify(m.input, { topK: m.topK });
+      post({ type: "result", reqId: m.reqId, result });
+    } else if (m.type === "dispose") {
+      (await sorter)?.dispose();
+      self.close();
+    }
+  });
+}
+
+if (typeof WorkerGlobalScope === "function" && globalThis instanceof WorkerGlobalScope && globalThis.name === WORKER_NAME) {
+  startWorkerHost();
 }

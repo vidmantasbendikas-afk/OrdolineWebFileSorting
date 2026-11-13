@@ -6,8 +6,13 @@ as a fallback).
 
 The project has two parts:
 
-- **`sorter/`**: a drop-in JavaScript module that any website can use to classify photos. See [`sorter/API.md`](sorter/API.md).
-- **The app** (`index.html`, `js/app.js`): a minimal page built on that module, for sorting photos and checking accuracy.
+- **The sorter** (`src/sorter/`): a drop-in module that any website can use to classify photos. See
+  [`docs/API.md`](docs/API.md).
+- **The app** (`index.html`, `src/app/app.ts`): a minimal page built on that module, for sorting photos and checking
+  accuracy.
+
+All code is TypeScript in `src/`. It compiles to plain ES modules in `dist/` (with `.d.ts` types and source maps),
+which is what pages load and what you give to other sites. `dist/` is generated, not committed.
 
 Everything runs in Docker; only Docker with Compose v2 is needed.
 
@@ -19,7 +24,7 @@ docker compose down
 ```
 
 Open http://localhost:8000, drop photos onto the page (or choose files) and press **Sort**. Each category lists its
-photos by confidence. **Run test set** sorts labelled photos from `data/test/` and shows the accuracy. Sample photos
+photos by confidence. **Stop** ends a running sort; photos not reached stay queued, and **Sort** continues with them. **Run test set** sorts labelled photos from `data/test/` and shows the accuracy. Sample photos
 are in `data/mixed/`.
 
 The app needs internet access on first load, because the ONNX runtime comes from jsDelivr. After that, the browser
@@ -29,7 +34,8 @@ keeps both the runtime and the model cached.
 
 | Service | Purpose |
 |---|---|
-| `web` | nginx serving the app and `sorter/` on port 8000, with cross-origin isolation headers (multi-threaded inference) |
+| `build` | Compiles `src/` to `dist/` and recompiles on every save |
+| `web` | nginx serving the app and `dist/` on port 8000, with cross-origin isolation headers (multi-threaded inference) |
 | `model-cdn` | nginx serving `model/` on port 8001, a separate origin with the same headers the production CDN must send |
 | `net` | Holds the shared network so both servers are `localhost` (required for the Cache API) |
 | `tests` | Playwright + Chromium; runs the TypeScript tests (on demand) |
@@ -41,7 +47,7 @@ The repository is mounted into the containers, so code edits show up on reload w
 
 ```html
 <script type="module">
-  import { createSorter } from "/path/to/ordoline-sorter.js";
+  import { createSorter } from "/ordoline/sorter/ordoline-sorter.js";
 
   const sorter = await createSorter({ modelUrl: "https://cdn.example.com/ordoline/best.onnx", worker: true });
   const result = await sorter.sort(fileInput.files);   // arrays, FileLists, URLs, Blobs, …
@@ -52,13 +58,16 @@ The repository is mounted into the containers, so code edits show up on reload w
 Or use the ready-made drop zone:
 
 ```html
-<script type="module" src="/path/to/ordoline-sorter-element.js"></script>
+<script type="module" src="/ordoline/ui/ordoline-sorter-element.js"></script>
 <ordoline-sorter model-url="https://cdn.example.com/ordoline/best.onnx"></ordoline-sorter>
 ```
 
-Copy `sorter/ordoline-sorter.js` (and optionally `ordoline-sorter-element.js` and `ordoline-sorter.d.ts`) to the site.
-The full input/output contract, error codes, events, performance and caching setup are in
-[`sorter/API.md`](sorter/API.md).
+Build (`npm run build`, or the `build` container), then copy `dist/sorter/` (required) and `dist/ui/` (only for the
+drop zone) to the site, keeping them side by side, e.g. as `/ordoline/sorter/` and `/ordoline/ui/`. `dist/sorter/`
+holds the entry point `ordoline-sorter.js` and the internal modules it imports; both folders include `.d.ts` types for
+TypeScript users. The `.map` files are optional. Put the model in `/ordoline/sorter/model/best.onnx`, or pass
+`modelUrl`. The full input/output
+contract, error codes, events, performance and caching setup are in [`docs/API.md`](docs/API.md).
 
 ### Model hosting
 
@@ -74,7 +83,7 @@ Access-Control-Expose-Headers: ETag
 
 Browsers keep the model in the Cache API and check its ETag on every load. An unchanged model costs one small request,
 and a new upload is picked up automatically. Pass the URL as `modelUrl`, or set `MODEL_CDN_URL` at the top of
-`sorter/ordoline-sorter.js` as the default. The app reads its model URL from `/config.json`, which `web` generates
+`src/sorter/options.ts` as the default. The app reads its model URL from `/config.json`, which `web` generates
 from `MODEL_URL` in `docker-compose.yml`.
 
 ### Speed
@@ -85,7 +94,7 @@ to be cross-origin isolated (`Cross-Origin-Opener-Policy: same-origin` and
 automatically. With `worker: true` (used by the app and the widget) the work runs in a Web Worker, so the page
 stays responsive: the longest freeze while sorting drops from ~300 ms to under 10 ms. The app's status line shows the
 engine, thread count and whether a worker is used. See *Performance* in
-`sorter/API.md` before enabling isolation on another site.
+`docs/API.md` before enabling isolation on another site.
 
 ## Tests
 
@@ -101,7 +110,10 @@ worker mode (including page responsiveness), model caching and ETag revalidation
 `docker compose up -d` must be running first. After changing `package.json`, rebuild with
 `docker compose build tests`.
 
-To run the tests without Docker, use Node 22+ and the installed Google Chrome: `npm install`, then `npm run test:fast`.
+Every Playwright run compiles `src/` first, so tests always use the current sources.
+
+Without Docker, use Node 22+ and the installed Google Chrome: `npm install`, `npm run build` (or `npm run build:watch`),
+`npm run typecheck`, `npm run test:fast`.
 
 ### Accuracy
 
@@ -119,15 +131,23 @@ See [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md): left and right side views come out swa
 
 | Path | Contents |
 |---|---|
-| `sorter/ordoline-sorter.js` | Core module: loading, preprocessing, inference (no DOM dependency; runs on the page or in a Web Worker) |
-| `sorter/ordoline-sorter-element.js` | Optional `<ordoline-sorter>` drop-zone UI |
-| `sorter/ordoline-sorter.d.ts`, `sorter/API.md` | API v1.0 types and documentation |
-| `sorter/demo.html` | Example page using the drop-zone UI |
-| `index.html`, `js/app.js` | The app |
+| `src/sorter/ordoline-sorter.ts` | Public entry: `createSorter`, re-exports the public API |
+| `src/sorter/types.ts` | Public types (`Sorter`, `ClassificationResult`, options, …) |
+| `src/sorter/sorter.ts` | In-thread sorter: inference, results, `sort()` |
+| `src/sorter/worker.ts` | Worker mode: page-side proxy and worker host |
+| `src/sorter/decode.ts`, `preprocess.ts` | Input handling, image decoding, resize and normalization |
+| `src/sorter/runtime.ts`, `model-cache.ts` | ONNX Runtime loading, model download and Cache API |
+| `src/sorter/categories.ts`, `options.ts`, `errors.ts` | Categories, defaults, `OrdolineError` |
+| `src/ui/ordoline-sorter-element.ts` | Optional `<ordoline-sorter>` drop-zone UI |
+| `src/app/app.ts`, `index.html` | The app |
+| `dist/` | Compiled output (generated) |
+| `docs/API.md` | API documentation |
+| `examples/widget-demo.html` | Example page using the drop-zone UI |
 | `js/testfiles.json` | List of labelled test images |
 | `model/best.onnx` | The model (34 MB, ConvNeXt-Tiny, 384×384 input, 11 classes) |
 | `data/test/`, `data/mixed/` | Labelled test photos (30 per folder) and unlabelled samples |
 | `docker-compose.yml`, `docker/` | Containers and nginx configuration |
 | `tests/` | Playwright tests (TypeScript) |
+| `CLAUDE.md` | Guidance for Claude Code: commands, conventions, invariants |
 | `KNOWN_ISSUES.md` | Open findings, e.g. left/right swapped on some cameras |
 | `tools/ground_truth.py` | Python reference accuracy of the model; writes `tools/ground_truth_report.json` |

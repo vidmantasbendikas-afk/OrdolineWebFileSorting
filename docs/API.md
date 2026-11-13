@@ -2,12 +2,13 @@
 
 Classifies dental photos into 11 categories, fully in the browser. The core (`ordoline-sorter.js`) has no DOM
 dependency, so it runs on the page's main thread or in a Web Worker.
-Exact types: [`ordoline-sorter.d.ts`](ordoline-sorter.d.ts).
+Source: [`src/sorter/`](../src/sorter/) (TypeScript). Exact types: [`types.ts`](../src/sorter/types.ts); the build
+also emits `.d.ts` files next to the compiled JavaScript in `dist/sorter/`.
 
 | File | Purpose |
 |---|---|
-| `ordoline-sorter.js` | Core API (required) |
-| `ordoline-sorter-element.js` | Optional `<ordoline-sorter>` drop-zone UI (browser only) |
+| `ordoline-sorter.js` | Core API entry (required, with the modules it imports from `dist/sorter/`) |
+| `ui/ordoline-sorter-element.js` | Optional `<ordoline-sorter>` drop-zone UI (browser only); imports `../sorter/` |
 | model `best.onnx` (34 MB) | Loaded from `modelUrl` |
 | onnxruntime-web 1.22.0 | Loaded from jsDelivr unless you inject `ort` |
 
@@ -75,7 +76,7 @@ Failure:
   "model": { "url": "…/best.onnx", "source": "cache", "backend": "wasm", "threads": 4, "worker": true, "inputSize": 384, "classes": ["ceph_front", "…"] },
   "results": [ { "index": 0, "id": "0", "...": "one result per input, in input order" } ],
   "byCategory": { "intraoral_left": ["0", "7"], "intraoral_right": [], "...": "every category, ids by confidence" },
-  "summary": { "total": 12, "sorted": 11, "failed": 1, "lowConfidence": 2, "timingMs": 5120 }
+  "summary": { "total": 12, "sorted": 11, "failed": 1, "skipped": 0, "lowConfidence": 2, "aborted": false, "timingMs": 5120 }
 }
 ```
 
@@ -111,7 +112,7 @@ some cameras (seen with a SHOFU EyeSpecial C-IV) come out swapped. See [`KNOWN_I
 | `INFERENCE_FAILED` | Model run failed |
 | `DISPOSED` | `dispose()` was called |
 | `MODEL_LOAD_FAILED`, `RUNTIME_LOAD_FAILED` | `createSorter()` rejects with `OrdolineError` |
-| `ABORTED` | `sort()` stopped via `signal` |
+| `ABORTED` | `classify()` cancelled via `signal` (a stopped `sort()` resolves instead; see *Stopping*) |
 | `INVALID_OPTIONS` | `createSorter()` options that cannot be combined (`worker` + `ort`) |
 
 ## Options
@@ -130,6 +131,28 @@ createSorter({
 
 sorter.sort(files, { onResult: (r, { done, total }) => {}, signal: abortController.signal });
 ```
+
+## Stopping
+
+```js
+const stopper = new AbortController();
+const result = await sorter.sort(files, { signal: stopper.signal });   // stopButton.onclick = () => stopper.abort()
+
+if (result.summary.aborted) {
+  // result covers the photos done so far; summary.skipped photos were not processed
+}
+```
+
+When the signal fires, `sort()` **resolves at once** with a partial result: `results` and `byCategory` cover the
+photos finished so far, `summary.aborted` is `true` and `summary.skipped` counts the photos not reached (it does not
+reject). A photo whose model run is already in progress cannot be interrupted; its result is discarded. With
+`worker: true` the stop is immediate for the page, and the worker skips photos it has not started.
+
+`classify(input, { signal })` works the same way for single calls: it resolves with error code `ABORTED` unless the
+result is already available.
+
+`<ordoline-sorter>` shows a **Stop** button while sorting, and has `el.stop()`. `sorter.dispose()` stops everything for
+good.
 
 ## Performance
 
@@ -194,12 +217,19 @@ Decoding, preprocessing and inference then run in a dedicated Web Worker. The AP
 `sorter.model.worker` is `true`. Without it, the page freezes for the duration of each photo's inference (measured:
 up to ~300 ms per photo; with the worker, under 10 ms). It does not make a single photo faster.
 
-The worker loads this same module file, so nothing extra needs to be deployed. That works when the module is served
-from another origin too, as long as that origin sends CORS headers. `<img>` and `<canvas>` inputs are converted to
+The worker loads `worker.js` from the same `dist/sorter/` folder, so nothing extra needs to be deployed. That works
+when the module is served from another origin too, as long as that origin sends CORS headers. `<img>` and `<canvas>` inputs are converted to
 `ImageBitmap` on the page before sending, and relative URLs are resolved against the page. `worker: true` cannot be
 combined with `ort` (use `ortUrl`). The `<ordoline-sorter>` widget uses a worker by default.
 
 You can also import the module inside your own worker; the core has no DOM dependency.
+
+## UI widget (optional)
+
+```html
+<script type="module" src="ui/ordoline-sorter-element.js"></script>
+<ordoline-sorter model-url="https://cdn.example.com/ordoline/best.onnx"></ordoline-sorter>
+```
 
 | Event | `detail` |
 |---|---|
@@ -211,4 +241,5 @@ You can also import the module inside your own worker; the core has no DOM depen
 
 Attributes: `model-url`, `low-confidence-threshold`, `no-results` (hide the built-in grid and render your own),
 `no-worker` (run on the main thread instead of a Web Worker).
-Method: `el.sort(inputs)` returns `Promise<SortResult>`.
+Methods: `el.sort(inputs)` returns `Promise<SortResult>`; `el.stop()` stops a running sort (the widget also shows a
+Stop button while sorting).

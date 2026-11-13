@@ -1,0 +1,57 @@
+# docker compose up -d                 app on http://localhost:8000, model CDN on http://localhost:8001
+# docker compose run --rm tests        Playwright tests (add --grep-invert @slow for the fast set)
+# docker compose run --rm reference    Python reference accuracy of the model
+name: ordoline
+
+services:
+  # Holds the shared network namespace. web, model-cdn and tests all join it, so both origins are "localhost"
+  # (a secure context, so the Cache API works) on different ports (so the model is genuinely cross-origin,
+  # like the production CDN). Restarting web or model-cdn does not disturb the others.
+  net:
+    image: alpine:3.22
+    command: ["sleep", "infinity"]
+    init: true
+    ports:
+      - "127.0.0.1:8000:8000" # web: app + sorter
+      - "127.0.0.1:8001:8001" # model-cdn
+
+  web:
+    image: nginx:1.29-alpine
+    network_mode: "service:net"
+    depends_on: [net]
+    environment:
+      MODEL_URL: http://localhost:8001/best.onnx
+    volumes:
+      - ./:/srv:ro
+      - ./docker/nginx/web.conf.template:/etc/nginx/templates/default.conf.template:ro
+
+  model-cdn:
+    image: nginx:1.29-alpine
+    network_mode: "service:net"
+    depends_on: [net]
+    volumes:
+      - ./model:/srv/model:ro
+      - ./docker/nginx/model-cdn.conf.template:/etc/nginx/templates/default.conf.template:ro
+
+  tests:
+    build:
+      context: .
+      dockerfile: docker/tests.Dockerfile
+    profiles: [tools]
+    network_mode: "service:net"
+    depends_on: [web, model-cdn]
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    volumes:
+      - ./:/work           # read-write: test results, and cache tests touch model/best.onnx
+      - /work/node_modules # keep the image's node_modules instead of the host's
+
+  reference:
+    build:
+      context: .
+      dockerfile: docker/reference.Dockerfile
+    profiles: [tools]
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    volumes:
+      - ./model:/work/model:ro
+      - ./data:/work/data:ro
+      - ./tools:/work/tools # writes tools/ground_truth_report.json

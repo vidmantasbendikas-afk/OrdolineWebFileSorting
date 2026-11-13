@@ -1,0 +1,27 @@
+# App + sorter module (http://localhost:8000). Rendered by the nginx image's envsubst; ${MODEL_URL} comes from compose.
+server {
+    listen 8000;
+    root /srv;
+    index index.html;
+
+    # Cross-origin isolation: lets the sorter run inference on several threads (SharedArrayBuffer).
+    add_header Cross-Origin-Opener-Policy "same-origin" always;
+    add_header Cross-Origin-Embedder-Policy "require-corp" always;
+
+    # Runtime config for the app: where to load the model from (the model-cdn origin).
+    location = /config.json {
+        default_type application/json;
+        add_header Cache-Control "no-cache" always;
+        return 200 '{"modelUrl":"${MODEL_URL}"}';
+    }
+
+    # Same-origin model copy (sorter/model -> ../model): revalidate every load via ETag.
+    location ~ \.onnx$ {
+        add_header Cache-Control "no-cache" always;
+    }
+
+    # Development server only: never expose .git, node_modules, docker files, etc.
+    location ~ /\.            { deny all; }
+    location ^~ /node_modules { deny all; }
+    location ^~ /docker       { deny all; }
+}

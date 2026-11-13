@@ -1,0 +1,12 @@
+# Stand-in for the production model CDN (http://localhost:8001), on a different origin than the app.
+# Headers match what the real CDN must send for the sorter's Cache API + ETag revalidation.
+server {
+    listen 8001;
+    root /srv/model;
+
+    location / {
+        add_header Cache-Control "no-cache" always;
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Access-Control-Expose-Headers "ETag" always;
+    }
+}

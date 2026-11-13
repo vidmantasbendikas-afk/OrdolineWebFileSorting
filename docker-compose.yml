@@ -1,4 +1,5 @@
-# docker compose up -d                 app on http://localhost:8000, model CDN on http://localhost:8001
+# docker compose up -d                 app on http://localhost:8000, model CDN on http://localhost:8001,
+#                                      and src/*.ts recompiled to dist/ on every save
 # docker compose run --rm tests        Playwright tests (add --grep-invert @slow for the fast set)
 # docker compose run --rm reference    Python reference accuracy of the model
 name: ordoline
@@ -33,7 +34,20 @@ services:
       - ./model:/srv/model:ro
       - ./docker/nginx/model-cdn.conf.template:/etc/nginx/templates/default.conf.template:ro
 
+  # Compiles src/ (TypeScript) to dist/ and keeps watching for changes.
+  build:
+    build:
+      context: .
+      dockerfile: docker/tests.Dockerfile
+    image: ordoline-tests
+    command: ["npx", "tsc", "-p", "tsconfig.build.json", "--watch", "--preserveWatchOutput"]
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    volumes:
+      - ./:/work
+      - /work/node_modules
+
   tests:
+    image: ordoline-tests
     build:
       context: .
       dockerfile: docker/tests.Dockerfile

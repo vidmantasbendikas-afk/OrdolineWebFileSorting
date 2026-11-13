@@ -6,6 +6,7 @@ const inDocker = !!process.env.IN_DOCKER;
 
 export default defineConfig({
   testDir: "tests",
+  globalSetup: "./tests/global-setup.ts", // compiles src/ to dist/ before every run
   timeout: 120_000,
   workers: 1, // inference is CPU-heavy; parallel runs only slow each other down
   reporter: [["list"]],

@@ -15,7 +15,12 @@ server {
         return 200 '{"modelUrl":"${MODEL_URL}"}';
     }
 
-    # Same-origin model copy (sorter/model -> ../model): revalidate every load via ETag.
+    # The compiled module looks for model/best.onnx next to itself (dist/sorter/model/): serve model/ there.
+    # Revalidate every load via ETag.
+    location ^~ /dist/sorter/model/ {
+        alias /srv/model/;
+        add_header Cache-Control "no-cache" always;
+    }
     location ~ \.onnx$ {
         add_header Cache-Control "no-cache" always;
     }

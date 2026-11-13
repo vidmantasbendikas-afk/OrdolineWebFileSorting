@@ -33,7 +33,7 @@ test("only the current model URL is kept in the cache", async ({ page }) => {
   await loadSource(page);
   const keys = await page.evaluate(async () =>
     (await (await caches.open("ordoline-sorter-model")).keys()).map((r) => new URL(r.url).pathname));
-  expect(keys).toEqual(["/sorter/model/best.onnx"]);
+  expect(keys).toEqual(["/dist/sorter/model/best.onnx"]);
 });
 
 test("modelCache: false always downloads and stores nothing", async ({ page }) => {

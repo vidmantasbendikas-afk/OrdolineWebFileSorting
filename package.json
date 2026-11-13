@@ -3,13 +3,15 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "build:watch": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "typecheck": "tsc --noEmit",
     "up": "docker compose up -d",
     "down": "docker compose down",
     "test": "playwright test",
     "test:fast": "playwright test --grep-invert @slow",
     "test:docker": "docker compose run --rm tests",
-    "reference": "docker compose run --rm reference",
-    "typecheck": "tsc --noEmit"
+    "reference": "docker compose run --rm reference"
   },
   "devDependencies": {
     "@playwright/test": "1.65.0",

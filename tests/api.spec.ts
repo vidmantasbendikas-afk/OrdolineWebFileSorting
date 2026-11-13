@@ -134,21 +134,6 @@ test("sort keeps input order, groups by category and reports progress", async ({
   expect(result.summary).toMatchObject({ total: images.length, sorted: images.length, failed: 0 });
 });
 
-test("sort can be aborted", async ({ page }) => {
-  const outcome = await page.evaluate(async (url) => {
-    const s = await window.api.createSorter();
-    const ctrl = new AbortController();
-    let seen = 0;
-    try {
-      await s.sort([url, url, url], { signal: ctrl.signal, onResult: () => { seen++; ctrl.abort(); } });
-      return { code: "none", seen };
-    } catch (e) {
-      return { code: (e as InstanceType<typeof window.api.OrdolineError>).code, seen };
-    }
-  }, SAMPLE.url);
-  expect(outcome).toEqual({ code: "ABORTED", seen: 1 });
-});
-
 test("bad inputs return error results instead of throwing", async ({ page }) => {
   const errors = await page.evaluate(async () => {
     const s = await window.api.createSorter();
@@ -217,7 +202,7 @@ test("works inside a Web Worker without a DOM", async ({ page }) => {
   const urls = testImages(1).slice(0, 3).map((i) => i.url);
   const { inWorker, onPage } = await page.evaluate(async (urls) => {
     const code = `
-      import { createSorter } from "${location.origin}/sorter/ordoline-sorter.js";
+      import { createSorter } from "${location.origin}/dist/sorter/ordoline-sorter.js";
       onmessage = async (e) => {
         const s = await createSorter();
         const res = await s.sort(e.data.map((u) => new URL(u, "${location.origin}").href));

@@ -1,12 +1,6 @@
-/**
- * Ordoline Sorter — API v1.0
- * Classifies dental photos into 11 categories in the browser.
- * No DOM dependency: runs on the page's main thread or in a Web Worker.
- */
+/** Public types of the sorter API. */
 
-export const API_VERSION: "1.0";
-
-/* ============================== Categories ============================== */
+export const API_VERSION = "1.0";
 
 export type CategoryId =
   | "extraoral_frontal_rest"
@@ -26,11 +20,6 @@ export interface Category {
   /** Human-readable English label, e.g. "Intraoral left". */
   readonly label: string;
 }
-
-/** All categories in canonical display order. */
-export const CATEGORIES: readonly Category[];
-
-/* ================================ Input ================================= */
 
 /** Already-decoded pixels, e.g. from your own canvas or image pipeline. */
 export interface RawImage {
@@ -72,8 +61,6 @@ export interface TaggedInput {
 
 export type SorterInput = ImageInput | TaggedInput;
 
-/* ================================ Output ================================ */
-
 export interface CategoryScore {
   category: CategoryId;
   label: string;
@@ -110,16 +97,16 @@ export interface ClassificationSuccess extends ResultBase {
 }
 
 export type ErrorCode =
-  | "UNSUPPORTED_INPUT"   // input type not accepted in this environment
-  | "FETCH_FAILED"        // URL input could not be fetched
-  | "DECODE_FAILED"       // bytes are not a decodable image / bad pixel data
-  | "INFERENCE_FAILED"    // model run failed
-  | "DISPOSED"            // sorter.dispose() was called
-  | "MODEL_LOAD_FAILED"   // createSorter(): model download/session creation failed
+  | "UNSUPPORTED_INPUT" // input type not accepted
+  | "FETCH_FAILED" // URL input could not be fetched
+  | "DECODE_FAILED" // bytes are not a decodable image / bad pixel data
+  | "INFERENCE_FAILED" // model run failed
+  | "DISPOSED" // sorter.dispose() was called
+  | "MODEL_LOAD_FAILED" // createSorter(): model download/session creation failed
   | "RUNTIME_LOAD_FAILED" // createSorter(): onnxruntime could not be loaded
-  | "ABORTED"             // sort() aborted via signal
-  | "INVALID_OPTIONS"     // createSorter(): options cannot be combined (worker + ort)
-  | "BUSY";               // <ordoline-sorter> only: a sort is already running
+  | "ABORTED" // classify() cancelled via signal
+  | "INVALID_OPTIONS" // createSorter(): options cannot be combined (worker + ort)
+  | "BUSY"; // <ordoline-sorter> only: a sort is already running
 
 export interface ClassificationFailure extends ResultBase {
   ok: false;
@@ -130,7 +117,7 @@ export interface ClassificationFailure extends ResultBase {
 export type ClassificationResult = ClassificationSuccess | ClassificationFailure;
 
 export interface ModelInfo {
-  readonly url: string | null;
+  readonly url: string;
   /** Where the model bytes came from: "network" (downloaded) or "cache" (Cache API copy: ETag unchanged, or offline). */
   readonly source: "network" | "cache";
   /** Execution provider in use: "webgpu" or "wasm". */
@@ -143,26 +130,37 @@ export interface ModelInfo {
   readonly classes: readonly string[];
 }
 
+export type IndexedResult = ClassificationResult & { index: number };
+
 export interface SortResult {
-  apiVersion: "1.0";
+  apiVersion: typeof API_VERSION;
   model: ModelInfo;
-  /** One entry per input, in input order (`index` set). */
-  results: Array<ClassificationResult & { index: number }>;
+  /** One entry per processed input, in input order (`index` set). After a stop, inputs not reached are absent. */
+  results: IndexedResult[];
   /** Result ids per category, highest confidence first. Every category key is present. */
   byCategory: Record<CategoryId, string[]>;
   summary: {
+    /** Number of inputs given; equals sorted + failed + skipped. */
     total: number;
     sorted: number;
     failed: number;
+    /** Inputs not processed because the sort was stopped. */
+    skipped: number;
     lowConfidence: number;
+    /** True when the sort was stopped via `signal`; the result then covers the photos done so far. */
+    aborted: boolean;
     timingMs: number;
   };
 }
 
-/* ================================= API ================================== */
+export interface ProgressInfo {
+  loaded: number;
+  total: number;
+  fraction: number;
+}
 
 export interface SorterOptions {
-  /** Model URL (must allow CORS in browsers). Default: built-in CDN URL. */
+  /** Model URL (must allow CORS when cross-origin). Default: model/best.onnx next to this module. */
   modelUrl?: string;
   /**
    * Cache API name for a persistent model copy, revalidated by ETag (or Last-Modified) on every load. Default
@@ -174,51 +172,51 @@ export interface SorterOptions {
   /** ESM URL to import onnxruntime-web from when `ort` is not given. */
   ortUrl?: string;
   /** Directory URL for onnxruntime-web .wasm files. */
-  wasmPaths?: string;
+  wasmPaths?: string | null;
   /** Default: ["webgpu", "wasm"]; "webgpu" is skipped when no GPU adapter is available. */
-  executionProviders?: string[];
+  executionProviders?: string[] | null;
   /**
    * Run decoding, preprocessing and inference in a Web Worker so the page never freezes. Same API and results.
    * Not combinable with `ort`. Default false.
    */
   worker?: boolean;
   /** WASM inference threads. Default: up to 4 on cross-origin isolated pages, else 1. */
-  numThreads?: number;
+  numThreads?: number | null;
   /** Default 0.6. */
   lowConfidenceThreshold?: number;
   /** Default 3. */
   topK?: number;
   /** Model download progress. */
-  onProgress?: (p: { loaded: number; total: number; fraction: number }) => void;
+  onProgress?: (p: ProgressInfo) => void;
 }
 
 export interface SortOptions {
   topK?: number;
   /** Called after each image, in input order. */
-  onResult?: (result: ClassificationResult & { index: number }, progress: { done: number; total: number }) => void;
-  /** Stops before the next image; sort() then rejects. */
+  onResult?: (result: IndexedResult, progress: { done: number; total: number }) => void;
+  /**
+   * Stops the sort. sort() then resolves at once with the photos done so far and `summary.aborted: true`.
+   * A photo whose inference is already running cannot be interrupted; its result is discarded.
+   */
+  signal?: AbortSignal;
+}
+
+export interface ClassifyOptions {
+  topK?: number;
+  /** Id used when the input carries none (sort() passes the index). */
+  id?: string;
+  /** Cancels this call: it resolves at once with error code ABORTED unless the result is already available. */
   signal?: AbortSignal;
 }
 
 export interface Sorter {
-  readonly apiVersion: "1.0";
+  readonly apiVersion: typeof API_VERSION;
   readonly model: ModelInfo;
   readonly categories: readonly Category[];
   /** Classify one image. Never rejects for per-image problems: check `ok`. */
-  classify(input: SorterInput, options?: { topK?: number }): Promise<ClassificationResult>;
+  classify(input: SorterInput, options?: ClassifyOptions): Promise<ClassificationResult>;
   /** Classify many images sequentially and group them by category. */
   sort(inputs: Iterable<SorterInput> | ArrayLike<SorterInput>, options?: SortOptions): Promise<SortResult>;
   /** Free the model. Later calls return error code DISPOSED. */
   dispose(): void;
-}
-
-/**
- * Load runtime + model and return a Sorter. Identical plain options share one instance.
- * Rejects with OrdolineError (code MODEL_LOAD_FAILED or RUNTIME_LOAD_FAILED).
- */
-export function createSorter(options?: SorterOptions): Promise<Sorter>;
-
-export class OrdolineError extends Error {
-  readonly name: "OrdolineError";
-  readonly code: ErrorCode;
 }

@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { Page } from "@playwright/test";
-import type * as SorterApi from "../sorter/ordoline-sorter.js";
-import type { CategoryId } from "../sorter/ordoline-sorter.js";
+import type * as SorterApi from "../src/sorter/ordoline-sorter.ts";
+import type { CategoryId } from "../src/sorter/ordoline-sorter.ts";
 
 declare global {
   interface Window {

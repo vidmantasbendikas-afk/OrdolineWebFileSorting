@@ -1,4 +1,5 @@
 {
+  // Type-checks everything (sources, tests, config) without emitting. Building uses tsconfig.build.json.
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
@@ -6,9 +7,11 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["node"],
     "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "skipLibCheck": true
   },
-  "include": ["tests/**/*.ts", "playwright.config.ts", "sorter/*.d.ts"]
+  "include": ["src/**/*.ts", "tests/**/*.ts", "playwright.config.ts"]
 }

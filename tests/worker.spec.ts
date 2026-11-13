@@ -57,22 +57,15 @@ test("worker and in-thread sorters give identical results for every input type",
   }
 });
 
-test("worker sort keeps order, reports progress and can be aborted", async ({ page }) => {
+test("worker sort keeps order and reports progress", async ({ page }) => {
   const urls = testImages(1).slice(0, 4).map((i) => i.url);
   const out = await page.evaluate(async (urls) => {
     const s = await window.api.createSorter({ worker: true });
     const progress: number[] = [];
     const res = await s.sort(urls, { onResult: (_r, p) => progress.push(p.done) });
-    const ctrl = new AbortController();
-    let code = "none";
-    try {
-      await s.sort(urls, { signal: ctrl.signal, onResult: () => ctrl.abort() });
-    } catch (e) {
-      code = (e as { code: string }).code;
-    }
-    return { indexes: res.results.map((r) => r.index), progress, sorted: res.summary.sorted, model: res.model.worker, code };
+    return { indexes: res.results.map((r) => r.index), progress, sorted: res.summary.sorted, model: res.model.worker };
   }, urls);
-  expect(out).toEqual({ indexes: [0, 1, 2, 3], progress: [1, 2, 3, 4], sorted: 4, model: true, code: "ABORTED" });
+  expect(out).toEqual({ indexes: [0, 1, 2, 3], progress: [1, 2, 3, 4], sorted: 4, model: true });
 });
 
 test("worker reports per-image errors and dispose", async ({ page }) => {

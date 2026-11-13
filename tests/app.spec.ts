@@ -54,3 +54,23 @@ test("layout does not jump while photos are queued, sorted and cleared", async (
   await page.locator("#clear-btn").click();
   expect(await top(), "after clearing").toEqual(before);
 });
+
+test("Stop keeps unprocessed photos queued, and Sort continues with them", async ({ page }) => {
+  await page.locator("#file-input").setInputFiles(testImages(3).map((i) => i.path)); // 30 photos
+  await page.locator("#submit-btn").click();
+  await expect(page.locator(".chip").first()).toBeVisible({ timeout: 60_000 });
+  await page.locator("#stop-btn").click();
+
+  await expect(page.locator("#sort-progress-text")).toContainText("stopped", { timeout: 10_000 });
+  const sorted = await page.locator(".chip").count();
+  const queued = Number(await page.locator("#queue-count").textContent());
+  expect(sorted).toBeGreaterThan(0);
+  expect(queued).toBeGreaterThan(0);
+  expect(sorted + queued).toBe(30);
+  await expect(page.locator("#stop-btn")).toBeDisabled();
+
+  await page.locator("#submit-btn").click();
+  await expect(page.locator("#sort-progress-text")).toHaveText(/^sorted \d+/, { timeout: 120_000 });
+  await expect(page.locator(".chip")).toHaveCount(30);
+  await expect(page.locator("#queue-count")).toHaveText("0");
+});

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Ordoline Sorter — drop-in demo</title>
+  <script type="module" src="./ordoline-sorter-element.js"></script>
+</head>
+<body style="max-width:1000px;margin:24px auto;font-family:system-ui">
+  <h1>Host page</h1>
+  <ordoline-sorter id="sorter"></ordoline-sorter>
+  <pre id="log" style="font-size:12px;background:#f1f5f9;padding:8px"></pre>
+  <script>
+    const log = (s) => (document.getElementById("log").textContent += s + "\n");
+    const el = document.getElementById("sorter");
+    el.addEventListener("ordoline-ready", (e) => log("ready: " + e.detail.model.backend));
+    el.addEventListener("ordoline-result", (e) => {
+      const r = e.detail.result;
+      log(r.ok ? `${r.name} -> ${r.category} (${(r.confidence * 100).toFixed(1)}%)${r.lowConfidence ? " [review]" : ""}`
+               : `${r.name}: ${r.error.code} ${r.error.message}`);
+    });
+    el.addEventListener("ordoline-done", (e) => log("done: " + JSON.stringify(e.detail.result.summary)));
+    el.addEventListener("ordoline-error", (e) => log("error: " + e.detail.code + " " + e.detail.message));
+  </script>
+</body>
+</html>

@@ -58,19 +58,49 @@ downloaded again only when Ordoline publishes a new version.
 | **`Content-Security-Policy`**, if your site has one | Allow `script-src cdn.jsdelivr.net 'wasm-unsafe-eval'`, `worker-src blob:`, and `connect-src` for jsDelivr and the model's host |
 | **Modern browser** | Tested in Chrome. Uses standard APIs (ES modules, Web Workers, `createImageBitmap`, `OffscreenCanvas`) available in current Chrome, Edge, Firefox and Safari |
 
-### Optional: faster sorting
+### Optional: faster sorting (server headers)
 
-On our test machine, sorting took about 0.6 s per photo on one CPU thread and 0.3 s with 4 threads; older office
-computers will be slower. A usable GPU (WebGPU) is used automatically and is typically faster still. If your page is served with
+**No server changes are needed.** Without them the module sorts on one CPU thread: about 0.6 s per photo on our test
+machine (older office computers will be slower).
+
+If the page that uses the module is served with these two HTTP response headers, the module uses up to 4 CPU threads,
+about 0.3 s per photo (2× faster):
 
 ```
 Cross-Origin-Opener-Policy: same-origin
 Cross-Origin-Embedder-Policy: require-corp
 ```
 
-the module uses up to 4 CPU threads (about 2× faster). These headers make browsers block cross-origin resources that
-do not opt in (images, scripts, iframes, analytics), so check your site first. Without them everything still works,
-on one thread.
+They must be real HTTP headers from your web server; a `<meta http-equiv>` tag does not work. They are needed only on
+the HTML page itself, not on `ordoline-sorter.js` or the model. Examples:
+
+```nginx
+# nginx (server or location block of the page)
+add_header Cross-Origin-Opener-Policy same-origin;
+add_header Cross-Origin-Embedder-Policy require-corp;
+```
+
+```apache
+# Apache (.htaccess or VirtualHost; needs mod_headers)
+Header set Cross-Origin-Opener-Policy "same-origin"
+Header set Cross-Origin-Embedder-Policy "require-corp"
+```
+
+Hosting services and CDNs (Cloudflare, Netlify, Vercel, …) have a "custom response headers" setting for the same.
+
+**Check your site first.** With `require-corp`, the browser blocks every resource from another domain that does not
+opt in (images, scripts, fonts, iframes, analytics, embedded videos). `Cross-Origin-Opener-Policy: same-origin` also
+cuts the link to windows opened from or opening the page (some login and payment pop-ups rely on it). The softer
+alternative:
+
+```
+Cross-Origin-Embedder-Policy: credentialless
+```
+
+loads resources from other domains without cookies instead of blocking them, and gives the same 4 threads in Chrome
+(verified) and Edge. Safari does not support it as far as we know; there the module stays on one thread.
+
+`sorter.model.threads` shows how many threads are in use.
 
 ## Before going live
 

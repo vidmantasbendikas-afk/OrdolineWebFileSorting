@@ -14,6 +14,7 @@ runs in the browser via onnxruntime-web 1.22.0 (CPU-only build `ort.wasm.min.mjs
 
 ```bash
 docker compose up -d                                   # build (tsc --watch), web :8000, model-cdn :8001
+docker compose run --rm tests npx playwright test --project=unit        # unit tests (~2 s, no servers needed)
 docker compose run --rm tests npx playwright test --grep-invert @slow   # fast tests (~2.5 min)
 docker compose run --rm tests                          # all tests incl. 300-photo accuracy (~4 min)
 docker compose run --rm tests npx tsc --noEmit         # type-check sources + tests
@@ -45,14 +46,18 @@ Without Docker: Node 22 is installed via nvm but not on the default PATH
   at module level.
 - The sorter core must stay **DOM-free** (runs in Web Workers). DOM code belongs in `src/ui/` or `src/app/`.
 - Browser-only: no Node/Deno/Bun support paths.
-- Tests: TypeScript Playwright in `tests/`. `tests/global-setup.ts` builds before every run. The harness page
-  `tests/harness.html` exposes the module as `window.api`.
+- Tests: TypeScript Playwright in `tests/`, two projects. `unit` (`tests/unit/*.test.ts`) runs in Node without a
+  browser: it imports `src/` directly and uses the fakes in `tests/unit/fakes.ts` (onnxruntime, `fetch`, Cache API).
+  Put pure logic tests there. `browser` (`tests/*.spec.ts`) needs `docker compose up -d`; the harness page
+  `tests/harness.html` exposes the module as `window.api`. `tests/global-setup.ts` builds before every run.
 - Git: **never add `Co-Authored-By` (or other AI attribution) to commit messages.** Commit or push only when asked.
 
 ## Invariants that are easy to break
 
 - **Preprocessing must match training** (`src/sorter/preprocess.ts`): EXIF orientation → letterbox, longest edge to
-  384 with PIL-style antialiased bilinear → black padding → ImageNet mean/std, CHW. The Python reference
+  384 with Pillow's BILINEAR → black padding → ImageNet mean/std, CHW. The resize is a bit-exact port of Pillow 13's
+  `Resample.c` (22-bit fixed point; vertical pass first when the height shrinks more than twice as much as the width);
+  `tests/unit/preprocess.test.ts` compares it pixel by pixel with Pillow output (`tools/preprocess_fixture.py`). The Python reference
   (`tools/ground_truth.py`, PIL) must give the same accuracy as the browser: currently **269/300 = 89.7%**,
   identical per folder. `tests/accuracy.spec.ts` fails below 89%.
 - **API results never throw per image**: `classify()` resolves `{ ok: false, error: { code } }`. A stopped `sort()`

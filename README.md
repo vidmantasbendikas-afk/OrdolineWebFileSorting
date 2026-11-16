@@ -142,20 +142,30 @@ engine, thread count and whether a worker is used. See *Performance* in
 
 ```bash
 docker compose run --rm tests                                   # everything (~3 min)
+docker compose run --rm tests npx playwright test --project=unit        # unit tests only (seconds, no servers)
 docker compose run --rm tests npx playwright test --grep-invert @slow   # fast set (~1 min)
 docker compose run --rm tests npx tsc --noEmit                  # type-check
 docker compose run --rm reference                               # Python reference accuracy
 ```
 
-The tests are TypeScript ([Playwright](https://playwright.dev)) and cover the API, every input type, error codes,
-worker mode (including page responsiveness), model caching and ETag revalidation (same-origin and via the CDN), the app and the drop-zone widget.
-`docker compose up -d` must be running first. After changing `package.json`, rebuild with
+The tests are TypeScript ([Playwright](https://playwright.dev)), in two projects:
+
+- **unit** (`tests/unit/*.test.ts`): the sorter's logic in Node, without a browser, model or network (fakes for
+  onnxruntime, `fetch` and the Cache API). Covers the resize (bit-exact against Pillow, from
+  `tests/unit/fixtures/preprocess-pil.json`), categories, scoring, options, errors, stopping and the model cache
+  decisions (ETag, offline, commit only after a working session).
+- **browser** (`tests/*.spec.ts`): the API, every input type, error codes, worker mode (including page
+  responsiveness), model caching and ETag revalidation (same-origin and via the CDN), the app, the drop-zone widget
+  and the release package. `docker compose up -d` must be running first.
+
+The Pillow fixture is regenerated with
+`docker compose run --rm -v ./tests/unit/fixtures:/work/fixtures reference python tools/preprocess_fixture.py`. After changing `package.json`, rebuild with
 `docker compose build tests`.
 
 Every Playwright run compiles `src/` first, so tests always use the current sources.
 
 Without Docker, use Node 22+ and the installed Google Chrome: `npm install`, `npm run build` (or `npm run build:watch`),
-`npm run typecheck`, `npm run test:fast`.
+`npm run typecheck`, `npm run test:unit`, `npm run test:fast`.
 
 ### Accuracy
 
@@ -191,7 +201,8 @@ See [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md): left and right side views come out swa
 | `model/best.onnx` | The model (34 MB, ConvNeXt-Tiny, 384×384 input, 11 classes) |
 | `data/test/`, `data/mixed/` | Labelled test photos (30 per folder) and unlabelled samples |
 | `docker-compose.yml`, `docker/` | Containers and nginx configuration |
-| `tests/` | Playwright tests (TypeScript) |
+| `tests/` | Playwright tests (TypeScript): `tests/unit/` without a browser, `tests/*.spec.ts` in Chromium |
 | `CLAUDE.md` | Guidance for Claude Code: commands, conventions, invariants |
 | `KNOWN_ISSUES.md` | Open findings, e.g. left/right swapped on some cameras |
 | `tools/ground_truth.py` | Python reference accuracy of the model; writes `tools/ground_truth_report.json` |
+| `tools/preprocess_fixture.py` | Pillow resize output used by the unit tests |

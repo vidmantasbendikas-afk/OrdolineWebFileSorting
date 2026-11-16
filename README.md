@@ -1,8 +1,8 @@
 # Ordoline — Dental Photo Sorting
 
 Sorts dental photographs into 11 categories (intraoral, extraoral, cephalometric views) entirely in the browser.
-Photos never leave the user's machine: a ConvNeXt-Tiny model runs locally via ONNX Runtime Web (WebGPU, or WebAssembly
-as a fallback).
+Photos never leave the user's machine: a ConvNeXt-Tiny model runs locally via ONNX Runtime Web (WebAssembly on the
+CPU; WebGPU is opt-in).
 
 The project has two parts:
 
@@ -94,8 +94,9 @@ from `MODEL_URL` in `docker-compose.yml`.
 
 About **570 ms per photo** on one CPU thread, and about **260 ms** with 4 threads. Multiple threads need the host page
 to be cross-origin isolated (`Cross-Origin-Opener-Policy: same-origin` and
-`Cross-Origin-Embedder-Policy: require-corp`), which `web` sends. WebGPU, when the browser has a usable GPU, is used
-automatically. With `worker: true` (used by the app and the widget) the work runs in a Web Worker, so the page
+`Cross-Origin-Embedder-Policy: require-corp`), which `web` sends. WebGPU is opt-in
+(`executionProviders: ["webgpu", "wasm"]`): it doubles the runtime download and is not yet verified for this model.
+With `worker: true` (used by the app and the widget) the work runs in a Web Worker, so the page
 stays responsive: the longest freeze while sorting drops from ~300 ms to under 10 ms. The app's status line shows the
 engine, thread count and whether a worker is used. See *Performance* in
 `docs/API.md` before enabling isolation on another site.

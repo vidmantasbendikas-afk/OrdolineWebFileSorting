@@ -99,10 +99,10 @@ export async function buildSorter(
 
   // onnxruntime silently drops "webgpu" when no GPU adapter exists, so check first to report the real backend.
   const gpuUsable = await hasWebGpuAdapter();
-  let eps = opts.executionProviders ?? ["webgpu", "wasm"];
+  let eps = opts.executionProviders ?? ["wasm"];
   if (!gpuUsable) eps = eps.filter((ep) => ep !== "webgpu");
   if (!eps.length) eps = ["wasm"];
-  const attempts = eps.map((_, i) => eps.slice(i)); // e.g. [webgpu, wasm], then [wasm]
+  const attempts = eps.map((_, i) => eps.slice(i)); // opt-in WebGPU: [webgpu, wasm], then [wasm]
   // keep a private copy for the cache: the runtime may take ownership of the bytes it is given
   const cacheCopy = commit ? buffer.slice(0) : null;
   let session: OrtSession | null = null, backend = "", lastErr: unknown;

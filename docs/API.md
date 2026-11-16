@@ -127,7 +127,8 @@ createSorter({
   lowConfidenceThreshold: 0.6,
   topK: 3,
   onProgress: ({ fraction }) => {},       // model download
-  // advanced: ort, ortUrl, wasmPaths, executionProviders
+  executionProviders: ["wasm"],           // default (CPU); ["webgpu", "wasm"] opts in to WebGPU, see Performance
+  // advanced: ort, ortUrl, wasmPaths
 });
 
 sorter.sort(files, { onResult: (r, { done, total }) => {}, signal: abortController.signal });
@@ -164,8 +165,8 @@ preprocessing add about 50 ms). Two things make it faster:
 
 | | Speed | Requirement |
 |---|---|---|
-| **WebGPU** | Typically the fastest; not yet measured for this model | Used automatically when the browser has a usable GPU adapter |
 | **Multi-threaded WASM** | ~260 ms per photo with 4 threads (2.2× faster) | The host page must be **cross-origin isolated** |
+| **WebGPU** (opt-in) | ~390 ms per photo with the isolation headers, ~630 ms without (no gain over 1 CPU thread); Intel Arc integrated GPU | `executionProviders: ["webgpu", "wasm"]` and a usable GPU |
 
 Cross-origin isolation means the page is served with:
 
@@ -175,6 +176,14 @@ Cross-Origin-Embedder-Policy: require-corp
 ```
 
 The sorter detects this (`crossOriginIsolated`) and uses up to 4 threads; more threads gave no further gain.
+
+**WebGPU is opt-in.** By default the sorter runs on the CPU (WebAssembly) and downloads only the CPU build of ONNX
+Runtime (about 11 MB, cached by the browser). `createSorter({ executionProviders: ["webgpu", "wasm"] })` downloads
+the full build instead (about 22 MB) and uses the GPU when the browser has a usable adapter, otherwise the CPU. It is
+not the default: it doubles the runtime download, and with this INT8-quantized model it was slower than 4 CPU threads
+and no faster than 1 thread on pages without isolation headers (measured on one machine; categories were identical
+to the CPU on 30 test photos). Parts of the model apparently still run on the CPU, which is why the headers matter
+even with WebGPU. A full-precision model may behave differently.
 `sorter.model.backend` and `sorter.model.threads` show what is in use. Override with `createSorter({ numThreads })`.
 
 **Caution for host sites:** with `require-corp`, every cross-origin resource on the page (images, scripts, iframes,

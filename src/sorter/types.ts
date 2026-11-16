@@ -105,7 +105,7 @@ export type ErrorCode =
   | "MODEL_LOAD_FAILED" // createSorter(): model download/session creation failed
   | "RUNTIME_LOAD_FAILED" // createSorter(): onnxruntime could not be loaded
   | "ABORTED" // classify() cancelled via signal
-  | "INVALID_OPTIONS" // createSorter(): options cannot be combined (worker + ort)
+  | "INVALID_OPTIONS" // createSorter(): options that cannot be combined (worker + ort)
   | "BUSY"; // <ordoline-sorter> only: a sort is already running
 
 export interface ClassificationFailure extends ResultBase {
@@ -169,11 +169,18 @@ export interface SorterOptions {
   modelCache?: string | false;
   /** Your own onnxruntime-web module (e.g. bundled via npm). Default: onnxruntime-web 1.22.0 from jsDelivr. */
   ort?: unknown;
-  /** ESM URL to import onnxruntime-web from when `ort` is not given. */
+  /**
+   * ESM URL to import onnxruntime-web from when `ort` is not given. Default: the CPU-only build (ort.wasm.min.mjs,
+   * about 11 MB with its .wasm file), or the full build (ort.all.min.mjs, about 22 MB) when `executionProviders`
+   * includes "webgpu".
+   */
   ortUrl?: string;
   /** Directory URL for onnxruntime-web .wasm files. */
   wasmPaths?: string | null;
-  /** Default: ["webgpu", "wasm"]; "webgpu" is skipped when no GPU adapter is available. */
+  /**
+   * Inference backends, tried in order. Default ["wasm"] (CPU). WebGPU is opt-in and not yet verified for this model:
+   * ["webgpu", "wasm"] uses the GPU when the browser has a usable adapter, else the CPU.
+   */
   executionProviders?: string[] | null;
   /**
    * Run decoding, preprocessing and inference in a Web Worker so the page never freezes. Same API and results.

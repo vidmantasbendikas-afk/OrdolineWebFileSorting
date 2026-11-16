@@ -12,7 +12,7 @@
  * The optional drop-zone UI lives in ordoline-sorter-element.ts.
  */
 
-import { DEFAULTS, type ResolvedOptions } from "./options.js";
+import { resolveOptions } from "./options.js";
 import { OrdolineError } from "./errors.js";
 import { buildSorter } from "./sorter.js";
 import { buildWorkerSorter } from "./worker.js";
@@ -31,7 +31,7 @@ const sorters = new Map<string, Promise<Sorter>>();
  */
 export function createSorter(options: SorterOptions = {}): Promise<Sorter> {
   const { onProgress, ...rest } = options;
-  const opts: ResolvedOptions = { ...DEFAULTS, ...rest };
+  const opts = resolveOptions(rest);
   if (opts.worker && opts.ort) {
     return Promise.reject(new OrdolineError("INVALID_OPTIONS", "options.ort cannot be passed to a worker; use ortUrl instead"));
   }

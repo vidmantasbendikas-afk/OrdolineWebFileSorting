@@ -5,7 +5,7 @@ Guidance for Claude Code in this repository. User-facing docs: `README.md`, `doc
 ## What this is
 
 Browser-only dental photo classifier (11 categories). A ConvNeXt-Tiny ONNX model (`model/best.onnx`, 384×384 input)
-runs in the browser via onnxruntime-web 1.22.0, loaded from jsDelivr. Two deliverables:
+runs in the browser via onnxruntime-web 1.22.0 (CPU-only build `ort.wasm.min.mjs`), loaded from jsDelivr. Two deliverables:
 
 - **Sorter module** (`src/sorter/`): drop-in API for other websites (`createSorter`, `classify`, `sort`).
 - **App** (`index.html` + `src/app/app.ts`): minimal page built on the module, for sorting and checking accuracy.
@@ -64,6 +64,9 @@ Without Docker: Node 22 is installed via nvm but not on the default PATH
 - **Model caching**: Cache API copy revalidated by ETag; cross-origin the CDN must send
   `Access-Control-Expose-Headers: ETag`. The default model URL is `model/best.onnx` next to the module; nginx aliases
   `/dist/sorter/model/` to `model/`.
+- **WebGPU is opt-in** (`executionProviders: ["webgpu", "wasm"]`), which switches the default runtime to the full
+  build `ort.all.min.mjs` (+ `jsep.wasm`, ~22 MB instead of ~11 MB); see `resolveOptions` in `options.ts`. Not the
+  default: unverified on this INT8 model, and no test machine has a GPU.
 - ONNX Runtime silently drops WebGPU without a GPU adapter, so `runtime.ts` checks for an adapter first to report the
   real backend. Headless test browsers have no GPU: tests run on WASM.
 

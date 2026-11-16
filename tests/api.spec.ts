@@ -11,11 +11,41 @@ test("createSorter loads the model and reports its info", async ({ page }) => {
   expect(info.apiVersion).toBe("1.0");
   expect(info.model.inputSize).toBe(384);
   expect(info.model.classes).toHaveLength(11);
-  expect(["webgpu", "wasm"]).toContain(info.model.backend);
+  expect(info.model.backend).toBe("wasm"); // WebGPU is opt-in
   expect(["network", "cache"]).toContain(info.model.source);
   // the dev server sends COOP + COEP, so WASM inference runs multi-threaded
-  if (info.model.backend === "wasm") expect(info.model.threads).toBeGreaterThan(1);
+  expect(info.model.threads).toBeGreaterThan(1);
   expect(info.categories).toBe(11);
+});
+
+// Which onnxruntime build the page downloads: CPU-only by default, the full build only when WebGPU is requested.
+const ortFiles = (page: import("@playwright/test").Page) => {
+  const files: string[] = [];
+  page.on("request", (r) => { if (r.url().includes("onnxruntime-web")) files.push(r.url().split("/").pop()!); });
+  return files;
+};
+
+test("by default only the CPU (WebAssembly) runtime is downloaded", async ({ page }) => {
+  const files = ortFiles(page);
+  await openHarness(page);
+  const r = await page.evaluate(async (url) => (await window.api.createSorter({ modelCache: false })).classify(url), SAMPLE.url);
+  expect(r.ok && r.category).toBe("intraoral_left");
+  expect(files).toContain("ort.wasm.min.mjs");
+  expect(files).toContain("ort-wasm-simd-threaded.wasm");
+  expect(files.filter((f) => f.includes("jsep") || f.startsWith("ort.all"))).toEqual([]);
+});
+
+test("opting in to WebGPU loads the full runtime and falls back to WASM without a GPU", async ({ page }) => {
+  const files = ortFiles(page);
+  await openHarness(page);
+  const r = await page.evaluate(async (url) => {
+    const s = await window.api.createSorter({ executionProviders: ["webgpu", "wasm"], modelCache: false });
+    return { backend: s.model.backend, result: await s.classify(url) };
+  }, SAMPLE.url);
+  expect(files).toContain("ort.all.min.mjs");
+  expect(files).toContain("ort-wasm-simd-threaded.jsep.wasm");
+  expect(r.backend).toBe("wasm"); // headless test browsers have no GPU adapter
+  expect(r.result.ok && r.result.category).toBe("intraoral_left");
 });
 
 test("createSorter returns the same instance for the same options", async ({ page }) => {

@@ -1,3 +1,4 @@
+// Copyright (c) 2026 UAB Agmis. All rights reserved.
 /** Defaults: runtime and model locations, thresholds. */
 import type { SorterOptions } from "./types.js";
 

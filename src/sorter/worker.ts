@@ -1,3 +1,4 @@
+// Copyright (c) 2026 UAB Agmis. All rights reserved.
 /** Worker mode: page-side proxy with the Sorter API, and the host that runs inside the worker. */
 import { CATEGORIES } from "./categories.js";
 import { inferName, unwrap } from "./decode.js";

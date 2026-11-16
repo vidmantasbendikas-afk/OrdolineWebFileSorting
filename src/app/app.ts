@@ -1,3 +1,4 @@
+// Copyright (c) 2026 UAB Agmis. All rights reserved.
 /* Ordoline — Dental Photo Sorting page.
  * UI only: all loading, preprocessing and classification go through the sorter API (../sorter/ordoline-sorter.ts).
  */

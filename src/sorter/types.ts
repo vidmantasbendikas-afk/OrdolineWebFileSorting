@@ -1,3 +1,4 @@
+// Copyright (c) 2026 UAB Agmis. All rights reserved.
 /** Public types of the sorter API. */
 
 export const API_VERSION = "1.0";

@@ -1,3 +1,4 @@
+// Copyright (c) 2026 UAB Agmis. All rights reserved.
 import type { ErrorCode } from "./types.js";
 
 export class OrdolineError extends Error {

@@ -1,3 +1,4 @@
+// Copyright (c) 2026 UAB Agmis. All rights reserved.
 /** The in-thread sorter, and sort() shared with the worker proxy. */
 import { CATEGORIES, DEFAULT_CLASSES, LABELS, classToCategory } from "./categories.js";
 import { decode, inferName, unwrap } from "./decode.js";

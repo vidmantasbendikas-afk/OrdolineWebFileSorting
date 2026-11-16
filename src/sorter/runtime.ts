@@ -1,3 +1,4 @@
+// Copyright (c) 2026 UAB Agmis. All rights reserved.
 /** Loading onnxruntime-web (minimal typing of the parts we use), threads and WebGPU detection. */
 import type { ResolvedOptions } from "./options.js";
 

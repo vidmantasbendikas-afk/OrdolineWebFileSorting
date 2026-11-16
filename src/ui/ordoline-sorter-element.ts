@@ -1,3 +1,4 @@
+// Copyright (c) 2026 UAB Agmis. All rights reserved.
 /* <ordoline-sorter> — optional drop-zone UI on top of the DOM-free core (../sorter/ordoline-sorter.ts).
  *
  *   <script type="module" src="ordoline-sorter-element.js"></script>

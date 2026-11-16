@@ -1,3 +1,4 @@
+// Copyright (c) 2026 UAB Agmis. All rights reserved.
 /** The 11 photo categories and the mapping from the model's class names. */
 import type { Category, CategoryId } from "./types.js";
 

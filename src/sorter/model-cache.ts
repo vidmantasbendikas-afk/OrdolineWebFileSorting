@@ -1,3 +1,4 @@
+// Copyright (c) 2026 UAB Agmis. All rights reserved.
 /** Downloading the model, with a persistent Cache API copy revalidated by ETag. */
 
 export type ByteProgress = (loaded: number, total: number) => void;

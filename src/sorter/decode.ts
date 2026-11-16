@@ -1,3 +1,4 @@
+// Copyright (c) 2026 UAB Agmis. All rights reserved.
 /** Normalizing inputs and decoding images to RGBA pixels (createImageBitmap + OffscreenCanvas). */
 import { OrdolineError } from "./errors.js";
 import { readUrl } from "./model-cache.js";

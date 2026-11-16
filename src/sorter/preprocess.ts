@@ -1,3 +1,4 @@
+// Copyright (c) 2026 UAB Agmis. All rights reserved.
 /** Letterbox resize (Pillow's antialiased BILINEAR, bit-exact) and ImageNet normalization, matching training. */
 import { OrdolineError } from "./errors.js";
 import type { RawImage } from "./types.js";

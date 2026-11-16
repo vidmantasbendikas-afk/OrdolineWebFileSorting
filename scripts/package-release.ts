@@ -81,7 +81,10 @@ await build({
   target: "es2022",
   platform: "browser",
   legalComments: "none",
-  banner: { js: `/*! Ordoline Sorter ${version} — single-file build. Docs: API.md */` },
+  banner: {
+    js: `/*! Ordoline Sorter ${version} — single-file build. Docs: API.md
+ * Copyright (c) ${new Date().getFullYear()} UAB Agmis. All rights reserved. */`,
+  },
   define: modelUrl
     ? { __ORDOLINE_MODEL_URL__: JSON.stringify(modelUrl), __ORDOLINE_MODEL_SHA256__: JSON.stringify(modelSha256) }
     : {},

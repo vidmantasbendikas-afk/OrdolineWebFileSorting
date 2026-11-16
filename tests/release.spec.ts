@@ -39,6 +39,7 @@ test("package ships one JavaScript file, docs and valid checksums, but no model 
   const bundle = readFileSync(join(OUT, "ordoline-sorter.js"), "utf8");
   expect(bundle).not.toContain("customElements");
   expect(bundle).not.toContain("HTMLElement");
+  expect(bundle.split("\n").slice(0, 2).join("\n")).toMatch(/Copyright \(c\) \d{4} UAB Agmis\. All rights reserved\./);
   expect(readFileSync(join(OUT, "README.md"), "utf8")).not.toContain("<ordoline-sorter");
   expect(files.some((f) => f.endsWith(".map"))).toBe(false);
   expect(bundle).not.toMatch(/^\/\/ .*\.ts$/m); // esbuild's per-file path comments

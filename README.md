@@ -118,7 +118,7 @@ What can and cannot be protected:
    would restrict downloads further, but need a server that issues them; only worth it if the model itself becomes a
    target.
 
-**Publishing a new model**
+**Publishing a new model** (full procedure, versioning and rollback: [`docs/model-release.md`](docs/model-release.md))
 
 1. Check it: `docker compose run --rm reference` and the accuracy test (`tests/accuracy.spec.ts`).
 2. Upload it under a **new** versioned URL.
@@ -199,6 +199,7 @@ See [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md): left and right side views come out swa
 | `scripts/package-release.ts`, `packaging/` | Single-file release build, its provider README and example page |
 | `release/` | Release packages (generated) |
 | `docs/model-protection.md` | How the model is hosted and protected (recommended setup) |
+| `docs/model-release.md` | How to release a new model version to partners |
 | `docs/API.md` | API documentation |
 | `examples/widget-demo.html` | Example page using the drop-zone UI |
 | `js/testfiles.json` | List of labelled test images |

@@ -32,15 +32,19 @@ Without Docker: Node 22 is installed via nvm but not on the default PATH
 - **All code is TypeScript in `src/`.** `tsc -p tsconfig.build.json` compiles it 1:1 to ES modules in `dist/`
   (with `.d.ts` and source maps). Never edit `dist/` (generated, gitignored). No bundler.
 - `src/sorter/`: `ordoline-sorter.ts` is the public entry (only `createSorter` + re-exports). Public types live in
-  `types.ts`; keep them in sync with `docs/API.md`. Internals: `sorter.ts` (in-thread sorter, shared `sortWith`),
+  `types.ts`; keep them in sync with `docs/API.md` (full, for this repository) and `packaging/API.md` (short partner version). Internals: `sorter.ts` (in-thread sorter, shared `sortWith`),
   `worker.ts` (worker proxy + host), `decode.ts`, `preprocess.ts`, `runtime.ts`, `model-cache.ts`, `categories.ts`,
   `options.ts`, `errors.ts`.
 - `src/ui/ordoline-sorter-element.ts`: optional `<ordoline-sorter>` widget; imports `../sorter/`.
 - **Release for external providers = ONE file.** `scripts/package-release.ts` bundles
-  `src/sorter/ordoline-sorter.ts` (API + worker) with esbuild into `ordoline-sorter.js`. **Never ship the model or the
-  `<ordoline-sorter>` widget to third parties.** The model stays on our CDN; `--model-url` bakes its URL in via the
-  `__ORDOLINE_MODEL_URL__` define in `options.ts`. Widget docs stay inside `<!-- repo-only -->` blocks in
-  `docs/API.md` (stripped when packaging). Provider-facing docs live in `packaging/`. Bump `version` in
+  `src/sorter/ordoline-sorter.ts` (API + worker) with esbuild into `ordoline-sorter.js`. **Never ship the
+  `<ordoline-sorter>` widget to third parties.** Normally the model stays on our CDN; `--model-url` bakes its URL in via
+  the `__ORDOLINE_MODEL_URL__` define in `options.ts`. Only when explicitly requested (decided 2026-11-16 for a first
+  delivery), `--include-model` ships `model/best.onnx` in a separate `-with-model` package, loaded from next to the
+  file, with only its SHA-256 baked in. `packaging/` templates use `<!-- hosted-model -->` / `<!-- included-model -->`
+  blocks for the two variants. The package gets the short partner docs from `packaging/`
+  (`README.md`, `API.md`, `example.html`; `KNOWN_ISSUES.md` is not shipped): no repository internals, advanced options (WebGPU,
+  `ortUrl`, threads) or optional server setup; `tests/release.spec.ts` checks this. `docs/API.md` is not shipped. Bump `version` in
   `package.json` for a new release.
 - The bundle is also loaded inside the sorter's own Web Worker, so code in `src/sorter/` must not touch DOM globals
   at module level.

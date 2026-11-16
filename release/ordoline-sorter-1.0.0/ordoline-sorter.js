@@ -1,4 +1,5 @@
-/*! Ordoline Sorter 1.0.0 — single-file build. Docs: API.md */
+/*! Ordoline Sorter 1.0.0 — single-file build. Docs: API.md
+ * Copyright (c) 2026 UAB Agmis. All rights reserved. */
 
 var ORT_VERSION = "1.22.0";
 var ORT_CDN = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/`;
@@ -490,7 +491,7 @@ function sessionInputSize(session) {
   return typeof dim === "number" && Number.isFinite(dim) && dim > 0 ? dim : 384;
 }
 
-var API_VERSION = "1.0";
+var API_VERSION = "1.0.0";
 
 async function sortWith(classify, model, inputs, callOpts = {}) {
   const list = Array.from(inputs);

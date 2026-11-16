@@ -9,8 +9,8 @@ user's browser**. Photos never leave the user's machine.
 |---|---|
 | **`ordoline-sorter.js`** | **The only file your pages include:** the sorter API and its Web Worker |
 | `example.html` | Minimal working page |
-| `API.md` | Full API: inputs, results, errors, options, caching, performance |
-| `KNOWN_ISSUES.md` | Known limitations of the model |
+| `sample-photos/` | 3 photos for trying the example page |
+| `API.md` | API: inputs, results, categories, errors, options |
 | `SHA256SUMS` | Checksums of all files (`sha256sum -c SHA256SUMS`) |
 
 ## Quick start
@@ -59,7 +59,7 @@ period, or test on your registered staging site instead.
 3. Open <http://localhost:8000/example.html>. The status line shows `Loading model… N%`, then
    `Ready (wasm, 1 thread(s))`. The first visit downloads the ONNX runtime (about 11 MB) and the model (about 34 MB);
    later visits load both from the browser cache.
-4. Choose a few photos. Each row shows the photo, its category and the confidence. Confidences below 60% are shown in
+4. Choose a few photos, e.g. the 3 in `sample-photos/`. Each row shows the photo, its category and the confidence. Confidences below 60% are shown in
    orange: worth a human check. **Stop** ends a running sort and keeps the results so far. The photos stay in the
    browser; nothing is uploaded.
 
@@ -73,7 +73,6 @@ If it does not work:
 - Use `localhost`, not your computer's IP address: browsers treat `http://localhost` as secure, so the model is cached
   and its SHA-256 checked as on an HTTPS site. On plain `http://` with any other address it is downloaded on every
   visit and not checked.
-- One thread is expected here: these simple servers do not send the optional headers from *Optional: faster sorting*.
 
 ## The model
 
@@ -87,61 +86,7 @@ downloaded again only when Ordoline publishes a new version.
 |---|---|
 | **HTTPS** | The model is cached, and its SHA-256 checked, only on secure pages; without HTTPS it is downloaded on every visit and not verified |
 | **Access to the model's server** | Users' browsers download the model from it (see *The model*) |
-| **Access to `cdn.jsdelivr.net`** | The ONNX runtime (onnxruntime-web 1.22.0, CPU build, about 11 MB, cached by the browser) is loaded from there. To self-host it, see `ortUrl` / `wasmPaths` in `API.md` |
+| **Access to `cdn.jsdelivr.net`** | The ONNX runtime (onnxruntime-web 1.22.0, about 11 MB, cached by the browser) is loaded from there |
 | **`Content-Security-Policy`**, if your site has one | Allow `script-src cdn.jsdelivr.net 'wasm-unsafe-eval'`, `worker-src blob:`, and `connect-src` for jsDelivr and the model's host |
-| **Modern browser** | Tested in Chrome. Uses standard APIs (ES modules, Web Workers, `createImageBitmap`, `OffscreenCanvas`) available in current Chrome, Edge, Firefox and Safari |
-
-### Optional: faster sorting (server headers)
-
-**No server changes are needed.** Without them the module sorts on one CPU thread: about 0.6 s per photo on our test
-machine (older office computers will be slower).
-
-If the page that uses the module is served with these two HTTP response headers, the module uses up to 4 CPU threads,
-about 0.3 s per photo (2× faster):
-
-```
-Cross-Origin-Opener-Policy: same-origin
-Cross-Origin-Embedder-Policy: require-corp
-```
-
-They must be real HTTP headers from your web server; a `<meta http-equiv>` tag does not work. They are needed only on
-the HTML page itself, not on `ordoline-sorter.js` or the model. Examples:
-
-```nginx
-# nginx (server or location block of the page)
-add_header Cross-Origin-Opener-Policy same-origin;
-add_header Cross-Origin-Embedder-Policy require-corp;
-```
-
-```apache
-# Apache (.htaccess or VirtualHost; needs mod_headers)
-Header set Cross-Origin-Opener-Policy "same-origin"
-Header set Cross-Origin-Embedder-Policy "require-corp"
-```
-
-Hosting services and CDNs (Cloudflare, Netlify, Vercel, …) have a "custom response headers" setting for the same.
-
-**Check your site first.** With `require-corp`, the browser blocks every resource from another domain that does not
-opt in (images, scripts, fonts, iframes, analytics, embedded videos). `Cross-Origin-Opener-Policy: same-origin` also
-cuts the link to windows opened from or opening the page (some login and payment pop-ups rely on it). The softer
-alternative:
-
-```
-Cross-Origin-Embedder-Policy: credentialless
-```
-
-loads resources from other domains without cookies instead of blocking them, and gives the same 4 threads in Chrome
-(verified) and Edge. Safari does not support it as far as we know; there the module stays on one thread.
-
-`sorter.model.threads` shows how many threads are in use.
-
-## Before going live
-
-Read `KNOWN_ISSUES.md`. In particular, left and right side views came out swapped on photos from one camera model;
-check the classification of left/right views on photos from your own cameras.
-
-## Not supported
-
-Re-bundling `ordoline-sorter.js` with webpack/Vite is untested: worker mode loads the file's own URL again. Serve it as
-a plain static file and load it with `<script type="module">` or `import` (classic `<script>` without `type="module"`
-does not work).
+| **Load it as a module** | Serve `ordoline-sorter.js` as a plain static file and load it with `<script type="module">` or `import`. Do not re-bundle it (webpack, Vite) |
+| **Modern browser** | Tested in Chrome and Firefox; current Edge and Safari support the same standard APIs |

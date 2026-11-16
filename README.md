@@ -54,8 +54,19 @@ This creates `release/ordoline-sorter-<version>/` and a `.zip` of it. Providers 
 our server, and `--model-url` bakes its URL into the file as the default (without it, providers must pass `modelUrl`;
 the provider README and example page then say so). The `<ordoline-sorter>` widget is not included either; it is for this repository's pages only. The package also contains
 an example page, a provider README (`packaging/README.md`), `API.md`,
-`KNOWN_ISSUES.md` and `SHA256SUMS`. The version comes from `package.json`. `tests/release.spec.ts` builds the package
+and `SHA256SUMS` (partner versions of the docs from `packaging/`; `KNOWN_ISSUES.md` is not shipped). The version comes from `package.json`. `tests/release.spec.ts` builds the package
 and checks it works.
+
+When a partner should receive the model itself (e.g. before our CDN exists), build the variant with the model:
+
+```bash
+docker compose run --rm tests npm run package -- --include-model
+```
+
+This creates `release/ordoline-sorter-<version>-with-model/` (+ `.zip`, about 24 MB) with `model/best.onnx` next to
+`ordoline-sorter.js`. The module loads it from there; its SHA-256 is baked in. The provider README and example page
+describe this variant. That folder is not committed (the model is in Git LFS already). Partners who get the model
+can copy it, so send it only under the license agreement (see `docs/model-protection.md`).
 
 ## Use the module on a website
 

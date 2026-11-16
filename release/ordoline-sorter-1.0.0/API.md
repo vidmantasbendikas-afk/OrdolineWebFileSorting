@@ -1,45 +1,29 @@
-# Ordoline Sorter — API v1.0
-
-Classifies dental photos into 11 categories, fully in the browser. The core has no DOM dependency, so it runs on
-the page's main thread or in a Web Worker.
-
-| File | Purpose |
-|---|---|
-| `ordoline-sorter.js` | **The only file a page needs:** the sorter API and its Web Worker |
-| model `best.onnx` (34 MB) | Not in the release package: hosted by Ordoline. Loaded from the URL built into the release file, or from `modelUrl` |
-| onnxruntime-web 1.22.0 | Loaded from jsDelivr unless you inject `ort` |
-
-The release package (`npm run package`) contains this single bundled file. Inside this repository, `npm run build`
-instead emits one module per source file in `dist/sorter/` and `dist/ui/`, which the app and tests use.
+# Ordoline Sorter 1.0.0 — API
 
 ## Quick start
 
 ```js
 import { createSorter } from "./ordoline-sorter.js";
 
-const sorter = await createSorter();          // loads runtime + model once
-const r = await sorter.classify(file);        // one image
-const { results, byCategory } = await sorter.sort(files);  // many images
+const sorter = await createSorter({ modelUrl: "https://…/best.onnx", worker: true });   // loads runtime + model once
+const r = await sorter.classify(file);                      // one image
+const { results, byCategory } = await sorter.sort(files);   // many images
 ```
 
 ## Input
 
-Every method accepts an `ImageInput`, optionally wrapped as `{ image, id?, name? }` to attach your own id.
+`classify()` and `sort()` accept images as:
 
-| Input | Main thread | Worker |
-|---|---|---|
-| `File`, `Blob`, `ArrayBuffer`, `Uint8Array` (encoded JPEG/PNG/WebP…) | ✓ | ✓ |
-| URL string (`https:`, `data:`, `blob:`; cross-origin needs CORS) | ✓ | ✓ |
-| `{ data, width, height, channels? }` (raw RGB/RGBA pixels), `ImageData` | ✓ | ✓ |
-| `ImageBitmap`, `OffscreenCanvas`, `VideoFrame` | ✓ | ✓ |
-| `HTMLImageElement`, `HTMLCanvasElement` | ✓ | – |
+- `File` or `Blob` (e.g. from `<input type="file">`), `ArrayBuffer`, `Uint8Array` (JPEG, PNG, WebP…)
+- an image URL (`https:`, `data:`, `blob:`)
+- `ImageData`, `ImageBitmap`, `OffscreenCanvas`
+- `HTMLImageElement`, `HTMLCanvasElement`
 
-Encoded images have their EXIF orientation applied.
+Wrap an image as `{ image, id }` to attach your own id. EXIF orientation is applied.
 
-## Output
+## Result of `classify()`
 
-`classify()` resolves to one result. It **never rejects** for a bad image; check `ok` instead.
-All output is plain JSON-serializable data.
+It **never rejects** for a bad image; check `ok`.
 
 ```json
 {
@@ -56,34 +40,28 @@ All output is plain JSON-serializable data.
     { "category": "intraoral_right", "label": "Intraoral right", "confidence": 0.022 }
   ],
   "scores": { "extraoral_frontal_rest": 0.004, "...": "every category, sums to 1" },
-  "modelClass": "intr_left",
   "image": { "width": 4032, "height": 3024 },
   "timingMs": 412
 }
 ```
 
-Failure:
-
 ```json
 { "id": "img-2", "name": "notes.txt", "ok": false, "error": { "code": "DECODE_FAILED", "message": "Image could not be decoded" } }
 ```
 
-`sort()` resolves to:
+`lowConfidence` is `true` when `confidence` is below 0.6: flag those photos for a human check.
+
+## Result of `sort()`
 
 ```json
 {
-  "apiVersion": "1.0",
-  "model": { "url": "…/best.onnx", "source": "cache", "backend": "wasm", "threads": 4, "worker": true, "inputSize": 384, "classes": ["ceph_front", "…"], "sha256": "3f2a…" },
   "results": [ { "index": 0, "id": "0", "...": "one result per input, in input order" } ],
   "byCategory": { "intraoral_left": ["0", "7"], "intraoral_right": [], "...": "every category, ids by confidence" },
   "summary": { "total": 12, "sorted": 11, "failed": 1, "skipped": 0, "lowConfidence": 2, "aborted": false, "timingMs": 5120 }
 }
 ```
 
-`lowConfidence` is `true` when `confidence < lowConfidenceThreshold` (default 0.6). Use it to flag photos for
-human review.
-
-### Categories
+## Categories
 
 | id | label |
 |---|---|
@@ -99,39 +77,35 @@ human review.
 | `cephalometric_frontal` | Cephalometric (frontal) |
 | `cephalometric_lateral` | Cephalometric (lateral) |
 
-**Note on `intraoral_left` / `intraoral_right`:** these follow the training data's left/right convention. Photos from
-some cameras (seen with a SHOFU EyeSpecial C-IV) come out swapped. See [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md).
-
-### Error codes
+## Error codes
 
 | code | when |
 |---|---|
-| `UNSUPPORTED_INPUT` | Input type not accepted in this environment |
-| `FETCH_FAILED` | URL input could not be fetched |
-| `DECODE_FAILED` | Not a decodable image / bad pixel data |
-| `INFERENCE_FAILED` | Model run failed |
+| `UNSUPPORTED_INPUT` | The input is not an accepted image type |
+| `FETCH_FAILED` | An image URL could not be loaded |
+| `DECODE_FAILED` | Not a readable image |
+| `INFERENCE_FAILED` | Classification failed |
+| `ABORTED` | `classify()` was stopped with `signal` |
 | `DISPOSED` | `dispose()` was called |
-| `MODEL_LOAD_FAILED`, `RUNTIME_LOAD_FAILED` | `createSorter()` rejects with `OrdolineError` |
-| `ABORTED` | `classify()` cancelled via `signal` (a stopped `sort()` resolves instead; see *Stopping*) |
-| `INVALID_OPTIONS` | `createSorter()` option with an invalid value (`modelSha256`), or options that cannot be combined (`worker` + `ort`) |
+| `MODEL_LOAD_FAILED`, `RUNTIME_LOAD_FAILED` | `createSorter()` rejects: the model or the ONNX runtime could not be loaded |
+| `INVALID_OPTIONS` | `createSorter()` was given an invalid option |
 
 ## Options
 
 ```js
-createSorter({
-  modelUrl: "https://cdn.example.com/ordoline/best.onnx",
-  modelSha256: "3f2a…",                   // expected SHA-256 of the model; see Model integrity
-  modelCache: "ordoline-sorter-model",    // Cache API name; false to disable
-  numThreads: 4,                          // default: up to 4 when cross-origin isolated, else 1
-  worker: true,                           // run in a Web Worker (recommended for pages)
+const sorter = await createSorter({
+  modelUrl: "https://…/best.onnx",        // model URL received from Ordoline (not needed if built in)
+  modelSha256: "…",                       // its SHA-256, received with the URL
+  worker: true,                           // recommended: the page stays responsive while sorting
+  onProgress: ({ fraction }) => {},       // model loading progress, 0–1
   lowConfidenceThreshold: 0.6,
-  topK: 3,
-  onProgress: ({ fraction }) => {},       // model download
-  executionProviders: ["wasm"],           // default (CPU); ["webgpu", "wasm"] opts in to WebGPU, see Performance
-  // advanced: ort, ortUrl, wasmPaths
+  topK: 3,                                // entries in `top`
 });
 
-sorter.sort(files, { onResult: (r, { done, total }) => {}, signal: abortController.signal });
+const result = await sorter.sort(files, {
+  onResult: (r, { done, total }) => {},   // after each photo
+  signal: abortController.signal,         // to stop, see below
+});
 ```
 
 ## Stopping
@@ -139,109 +113,12 @@ sorter.sort(files, { onResult: (r, { done, total }) => {}, signal: abortControll
 ```js
 const stopper = new AbortController();
 const result = await sorter.sort(files, { signal: stopper.signal });   // stopButton.onclick = () => stopper.abort()
-
-if (result.summary.aborted) {
-  // result covers the photos done so far; summary.skipped photos were not processed
-}
 ```
 
-When the signal fires, `sort()` **resolves at once** with a partial result: `results` and `byCategory` cover the
-photos finished so far, `summary.aborted` is `true` and `summary.skipped` counts the photos not reached (it does not
-reject). A photo whose model run is already in progress cannot be interrupted; its result is discarded. With
-`worker: true` the stop is immediate for the page, and the worker skips photos it has not started.
+When stopped, `sort()` resolves at once with the photos done so far: `summary.aborted` is `true` and
+`summary.skipped` counts the photos not processed. `sorter.dispose()` releases the sorter for good.
 
-`classify(input, { signal })` works the same way for single calls: it resolves with error code `ABORTED` unless the
-result is already available.
+## Speed
 
-`sorter.dispose()` stops everything for good.
-
-## Performance
-
-Inference takes about **570 ms per photo on one CPU thread** (measured on a 2080×1560 photo; decoding and
-preprocessing add about 50 ms). Two things make it faster:
-
-| | Speed | Requirement |
-|---|---|---|
-| **Multi-threaded WASM** | ~260 ms per photo with 4 threads (2.2× faster) | The host page must be **cross-origin isolated** |
-| **WebGPU** (opt-in) | ~390 ms per photo with the isolation headers, ~630 ms without (no gain over 1 CPU thread); Intel Arc integrated GPU | `executionProviders: ["webgpu", "wasm"]` and a usable GPU |
-
-Cross-origin isolation means the page is served with:
-
-```
-Cross-Origin-Opener-Policy: same-origin
-Cross-Origin-Embedder-Policy: require-corp
-```
-
-The sorter detects this (`crossOriginIsolated`) and uses up to 4 threads; more threads gave no further gain.
-
-**WebGPU is opt-in.** By default the sorter runs on the CPU (WebAssembly) and downloads only the CPU build of ONNX
-Runtime (about 11 MB, cached by the browser). `createSorter({ executionProviders: ["webgpu", "wasm"] })` downloads
-the full build instead (about 22 MB) and uses the GPU when the browser has a usable adapter, otherwise the CPU. It is
-not the default: it doubles the runtime download, and with this INT8-quantized model it was slower than 4 CPU threads
-and no faster than 1 thread on pages without isolation headers (measured on one machine; categories were identical
-to the CPU on 30 test photos). Parts of the model apparently still run on the CPU, which is why the headers matter
-even with WebGPU. A full-precision model may behave differently.
-`sorter.model.backend` and `sorter.model.threads` show what is in use. Override with `createSorter({ numThreads })`.
-
-**Caution for host sites:** with `require-corp`, every cross-origin resource on the page (images, scripts, iframes,
-analytics) must be served with CORS or `Cross-Origin-Resource-Policy`, or the browser blocks it. Check the site
-before enabling. Without the headers, the sorter still works on one thread.
-
-## Model caching
-
-The model is kept in the browser's Cache API and revalidated on every load:
-
-| Server says | What happens |
-|---|---|
-| Same ETag as the cached copy | Download is cancelled, cached copy is used (a few KB of traffic) |
-| Different ETag | New model is downloaded, loaded, then replaces the cached copy |
-| Unreachable / error | Cached copy is used |
-
-A copy is stored only after the model loads successfully. Old model URLs are removed from the cache.
-`sorter.model.source` tells you whether the model came from `"network"` or `"cache"`.
-Disable with `createSorter({ modelCache: false })`.
-
-**Server/CDN setup for `best.onnx`** (e.g. S3 + CloudFront):
-
-```
-Cache-Control: no-cache                       # revalidate every load; a new upload is picked up at once
-ETag: "..."                                   # S3/CloudFront send this automatically
-Access-Control-Allow-Origin: *                # or the host sites' origins
-Access-Control-Expose-Headers: ETag           # otherwise browsers hide ETag from cross-origin scripts
-```
-
-Without `Expose-Headers: ETag` the sorter falls back to `Last-Modified`. If neither is readable, the model
-is downloaded on every load and not cached. The Cache API needs a secure context (https or localhost).
-
-The ONNX runtime needs no setup: jsDelivr serves the pinned version as `immutable` for one year.
-Upgrading means changing `ORT_VERSION`, which changes the URL.
-
-## Model integrity
-
-`createSorter({ modelUrl, modelSha256 })` refuses a model whose SHA-256 differs (`MODEL_LOAD_FAILED`, with both
-hashes in the message). Both fresh downloads and the cached copy are checked: a cached copy that does not match is
-dropped and the model downloaded again; if that is impossible (offline), loading fails rather than using it.
-`sorter.model.sha256` shows the hash that was verified (`null` if none was checked).
-
-Release builds made with `--model-url` contain the SHA-256 of the model deployed at that URL, so nothing needs to be
-configured; passing a different `modelUrl` turns the baked-in check off unless you also pass its `modelSha256`.
-Hashing needs Web Crypto, which browsers offer only on secure pages (https, or localhost); on plain http pages the
-check is skipped with a console warning. Hashing the 33 MB model took about 30 ms per load on our test machine.
-
-## Web Worker (keeps the page responsive)
-
-```js
-const sorter = await createSorter({ worker: true });
-```
-
-Decoding, preprocessing and inference then run in a dedicated Web Worker. The API and results are identical, and
-`sorter.model.worker` is `true`. Without it, the page freezes for the duration of each photo's inference (measured:
-up to ~300 ms per photo; with the worker, under 10 ms). It does not make a single photo faster.
-
-The worker loads the module's own file again (in the release, `ordoline-sorter.js`), so nothing extra needs to be
-deployed. That works when the module is served from another origin too, as long as that origin sends CORS headers.
-`<img>` and `<canvas>` inputs are converted to `ImageBitmap` on the page before sending, and relative URLs are
-resolved against the page. `worker: true` cannot be combined with `ort` (use `ortUrl`).
-
-You can also import the module inside your own worker; the core has no DOM dependency.
-
+About 0.6 s per photo on our test machine; older computers are slower. The first visit downloads the ONNX runtime (about 11 MB) and the
+model (about 34 MB); later visits load both from the browser cache.

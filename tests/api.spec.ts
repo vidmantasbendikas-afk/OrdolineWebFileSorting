@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { API_VERSION } from "../src/sorter/types.ts";
 import { MODEL_CDN_URL, MODEL_PATH, openHarness, SAMPLE, testImages } from "./helpers.ts";
 
 test.beforeEach(async ({ page }) => openHarness(page));
@@ -10,7 +11,7 @@ test("createSorter loads the model and reports its info", async ({ page }) => {
     const s = await window.api.createSorter();
     return { apiVersion: s.apiVersion, model: s.model, categories: s.categories.length };
   });
-  expect(info.apiVersion).toBe("1.0");
+  expect(info.apiVersion).toBe(API_VERSION);
   expect(info.model.inputSize).toBe(384);
   expect(info.model.classes).toHaveLength(11);
   expect(info.model.backend).toBe("wasm"); // WebGPU is opt-in
@@ -168,7 +169,7 @@ test("sort keeps input order, groups by category and reports progress", async ({
     return { result, progress };
   }, images.map((i) => i.url));
 
-  expect(result.apiVersion).toBe("1.0");
+  expect(result.apiVersion).toBe(API_VERSION);
   expect(result.results.map((r) => r.index)).toEqual(images.map((_, i) => i));
   expect(result.results.map((r) => r.id)).toEqual(images.map((_, i) => String(i)));
   expect(progress).toEqual(images.map((_, i) => [i, i + 1, images.length]));

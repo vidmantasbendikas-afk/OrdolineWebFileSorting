@@ -1,5 +1,5 @@
 // Copyright (c) 2026 UAB Agmis. All rights reserved.
-/* Ordoline Sorter — dental photo classifier core (ES module). API v1 — see docs/API.md.
+/* Ordoline Sorter — dental photo classifier core (ES module). See docs/API.md.
  *
  * Browser-only, no DOM dependency: runs on the page's main thread or in a Web Worker.
  *   - Inference: onnxruntime-web (from jsDelivr by default, or pass your own build via options.ort)

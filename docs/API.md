@@ -1,4 +1,4 @@
-# Ordoline Sorter — API v1.0
+# Ordoline Sorter — API 1.0.0
 
 Classifies dental photos into 11 categories, fully in the browser. The core has no DOM dependency, so it runs on
 the page's main thread or in a Web Worker.
@@ -73,7 +73,7 @@ Failure:
 
 ```json
 {
-  "apiVersion": "1.0",
+  "apiVersion": "1.0.0",
   "model": { "url": "…/best.onnx", "source": "cache", "backend": "wasm", "threads": 4, "worker": true, "inputSize": 384, "classes": ["ceph_front", "…"], "sha256": "3f2a…" },
   "results": [ { "index": 0, "id": "0", "...": "one result per input, in input order" } ],
   "byCategory": { "intraoral_left": ["0", "7"], "intraoral_right": [], "...": "every category, ids by confidence" },

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 UAB Agmis. All rights reserved.
 /** Public types of the sorter API. */
 
-export const API_VERSION = "1.0";
+export const API_VERSION = "1.0.0"; // = "version" in package.json (checked by tests/unit/sorter.test.ts)
 
 export type CategoryId =
   | "extraoral_frontal_rest"

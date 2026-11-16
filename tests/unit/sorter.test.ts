@@ -1,10 +1,11 @@
 /** The sorter core with a fake onnxruntime and raw-pixel inputs: scoring, options, errors, stopping, caching. */
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { test, expect } from "@playwright/test";
 import { createSorter } from "../../src/sorter/ordoline-sorter.ts";
 import { DEFAULTS, ORT_ALL_URL, ORT_WASM_URL, resolveOptions, type ResolvedOptions } from "../../src/sorter/options.ts";
 import { abortable, buildSorter } from "../../src/sorter/sorter.ts";
-import type { ClassificationResult, ClassificationSuccess, Sorter, SorterInput } from "../../src/sorter/types.ts";
+import { API_VERSION, type ClassificationResult, type ClassificationSuccess, type Sorter, type SorterInput } from "../../src/sorter/types.ts";
 import { MB, fakeOrt, outputFor, rgb, sleep, stubCaches, stubFetch, stubGlobal, trackedResponse, type FakeOrtOptions } from "./fakes.ts";
 
 let restore: Array<() => void> = [];
@@ -201,7 +202,7 @@ test.describe("sort and stopping", () => {
     expect(r.byCategory.intraoral_upper).toEqual(["1", "0", "2"]);
     expect(r.summary).toMatchObject({ total: 4, sorted: 3, failed: 1, skipped: 0, lowConfidence: 1, aborted: false });
     expect(seen).toEqual([[1, 4], [2, 4], [3, 4], [4, 4]]);
-    expect(r.apiVersion).toBe("1.0");
+    expect(r.apiVersion).toBe(API_VERSION);
   });
 
   test("sort accepts any iterable or array-like, including an empty one", async () => {
@@ -290,6 +291,11 @@ test.describe("options", () => {
 });
 
 test.describe("createSorter", () => {
+  test("apiVersion is the package version (the same number as the release file and its docs)", () => {
+    const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
+    expect(API_VERSION).toBe(pkg.version);
+  });
+
   test("worker mode cannot take an ort module", async () => {
     await expect(createSorter({ worker: true, ort: {} })).rejects.toMatchObject({ code: "INVALID_OPTIONS" });
   });

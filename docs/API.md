@@ -1,7 +1,7 @@
 # Ordoline Sorter — API v1.0
 
 Classifies dental photos into 11 categories, fully in the browser. The core has no DOM dependency, so it runs on
-the page's main thread or in a Web Worker. Types: `ordoline-sorter.d.ts` (release package).
+the page's main thread or in a Web Worker.
 <!-- repo-only -->Source: [`src/sorter/`](../src/sorter/) (TypeScript); types in [`types.ts`](../src/sorter/types.ts).<!-- /repo-only -->
 
 | File | Purpose |

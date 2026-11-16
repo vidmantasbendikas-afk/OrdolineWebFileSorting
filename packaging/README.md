@@ -8,7 +8,6 @@ user's browser**. Photos never leave the user's machine.
 | Path | Purpose |
 |---|---|
 | **`ordoline-sorter.js`** | **The only file your pages include:** the sorter API and its Web Worker |
-| `ordoline-sorter.d.ts`, `types/` | TypeScript types (optional) |
 | `example.html` | Minimal working page |
 | `API.md` | Full API: inputs, results, errors, options, caching, performance |
 | `KNOWN_ISSUES.md` | Known limitations of the model |

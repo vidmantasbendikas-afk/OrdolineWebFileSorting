@@ -5,7 +5,8 @@
  *
  * The sorter API and its worker are bundled by esbuild into ONE file, ordoline-sorter.js. NOT included: the model
  * (hosted by us; its URL is baked in with --model-url) and the <ordoline-sorter> widget (our own pages only).
- * Also: types, an example page, provider README, API.md, KNOWN_ISSUES.md and SHA256SUMS.
+ * Also: an example page, provider README, API.md, KNOWN_ISSUES.md and SHA256SUMS. No TypeScript types: partners use
+ * plain JavaScript.
  *
  * Run:  docker compose run --rm tests npm run package -- --model-url=https://cdn.example.com/ordoline/models/<version>/best.onnx
  *   --model-url=URL      default model URL baked into ordoline-sorter.js (without it, providers must pass modelUrl).
@@ -65,7 +66,7 @@ async function deployedModelSha256(url: string): Promise<string> {
 }
 const modelSha256 = modelUrl ? await deployedModelSha256(modelUrl) : undefined;
 
-// 1. type declarations (tsc) into dist/
+// 1. compile check (tsc): the release is only built from sources that type-check
 execFileSync("npx", ["tsc", "-p", "tsconfig.build.json"], { cwd: ROOT, stdio: "inherit" });
 
 rmSync(out, { recursive: true, force: true });
@@ -87,11 +88,12 @@ await build({
   logLevel: "warning",
 });
 
-// 3. types for TypeScript users: ordoline-sorter.d.ts -> types/
-for (const file of listFiles(join(ROOT, "dist", "sorter")).filter((f) => f.endsWith(".d.ts"))) {
-  write(join(out, "types", relative(join(ROOT, "dist", "sorter"), file)), readFileSync(file, "utf8"));
-}
-write(join(out, "ordoline-sorter.d.ts"), 'export * from "./types/ordoline-sorter.js";\n');
+// esbuild marks where each source file starts ("// src/sorter/errors.ts"); those repository paths do not belong in
+// the release
+const bundlePath = join(out, "ordoline-sorter.js");
+const bundle = readFileSync(bundlePath, "utf8").replace(/^\/\/ src\/\S+\.ts\n/gm, "");
+if (/\bsrc\/(sorter|ui|app)\//.test(bundle)) throw new Error("ordoline-sorter.js still mentions repository paths");
+writeFileSync(bundlePath, bundle);
 
 // 4. docs and examples (the model is not shipped)
 const modelText = modelUrl

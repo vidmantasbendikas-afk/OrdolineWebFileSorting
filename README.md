@@ -53,7 +53,7 @@ This creates `release/ordoline-sorter-<version>/` and a `.zip` of it. Providers 
 `ordoline-sorter.js` (the sorter API and its worker, bundled by esbuild). **The model is not included**: it stays on
 our server, and `--model-url` bakes its URL into the file as the default (without it, providers must pass `modelUrl`;
 the provider README and example page then say so). The `<ordoline-sorter>` widget is not included either; it is for this repository's pages only. The package also contains
-TypeScript types, an example page, a provider README (`packaging/README.md`), `API.md`,
+an example page, a provider README (`packaging/README.md`), `API.md`,
 `KNOWN_ISSUES.md` and `SHA256SUMS`. The version comes from `package.json`. `tests/release.spec.ts` builds the package
 and checks it works.
 

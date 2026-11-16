@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { test, expect } from "@playwright/test";
 import { MODEL_CDN_URL, MODEL_PATH, ROOT, testImages } from "./helpers.ts";
@@ -26,7 +26,7 @@ test.beforeAll(() => {
   pack(`--model-url=${MODEL_CDN_URL}`, "--out=release/_test");
 });
 
-test("package ships one JavaScript file, types, docs and valid checksums, but no model", () => {
+test("package ships one JavaScript file, docs and valid checksums, but no model and no type files", () => {
   const files = listFiles(OUT).map((f) => relative(OUT, f));
   expect(files.filter((f) => f.endsWith(".js"))).toEqual(["ordoline-sorter.js"]);
   expect(files.some((f) => f.endsWith(".onnx"))).toBe(false);
@@ -34,16 +34,15 @@ test("package ships one JavaScript file, types, docs and valid checksums, but no
   expect(readFileSync(join(OUT, "ordoline-sorter.js"), "utf8")).toContain(JSON.stringify(MODEL_SHA256)); // downloaded + hashed
   expect(readFileSync(join(OUT, "README.md"), "utf8")).toContain(MODEL_SHA256);
   expect(readFileSync(join(OUT, "README.md"), "utf8")).toContain(MODEL_CDN_URL);
-  for (const f of ["ordoline-sorter.d.ts", "README.md", "API.md", "KNOWN_ISSUES.md", "example.html", "SHA256SUMS"]) {
-    expect(files, f).toContain(f);
-  }
-  // the <ordoline-sorter> widget is for our own pages only: not in the third-party file, types or docs
+  expect(files.sort()).toEqual(["API.md", "KNOWN_ISSUES.md", "README.md", "SHA256SUMS", "example.html", "ordoline-sorter.js"]);
+  // the <ordoline-sorter> widget is for our own pages only: not in the third-party file or docs
   const bundle = readFileSync(join(OUT, "ordoline-sorter.js"), "utf8");
   expect(bundle).not.toContain("customElements");
   expect(bundle).not.toContain("HTMLElement");
-  expect(files.some((f) => f.includes("element") || f.startsWith("types/ui"))).toBe(false);
   expect(readFileSync(join(OUT, "README.md"), "utf8")).not.toContain("<ordoline-sorter");
   expect(files.some((f) => f.endsWith(".map"))).toBe(false);
+  expect(bundle).not.toMatch(/^\/\/ .*\.ts$/m); // esbuild's per-file path comments
+  expect(bundle).not.toContain("src/");
   expect(existsSync(`${OUT}.zip`)).toBe(true);
 
   const api = readFileSync(join(OUT, "API.md"), "utf8");
@@ -57,22 +56,6 @@ test("package ships one JavaScript file, types, docs and valid checksums, but no
     const [hash, file] = line.split(/ {2}/);
     expect(createHash("sha256").update(readFileSync(join(OUT, file))).digest("hex"), file).toBe(hash);
   }
-});
-
-test("types work for a TypeScript consumer", () => {
-  const dir = join(ROOT, "release", "_test", "_typecheck");
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, "consumer.ts"), `
-    import { createSorter, CATEGORIES, type ClassificationResult, type SortResult } from "../${NAME}/ordoline-sorter.js";
-    const s = await createSorter({ worker: true, modelUrl: "x" });
-    const r: ClassificationResult = await s.classify("photo.jpg");
-    if (r.ok) r.category satisfies (typeof CATEGORIES)[number]["id"];
-    const all: SortResult = await s.sort([], { signal: new AbortController().signal });
-    all.summary.aborted satisfies boolean;
-    export {};
-  `);
-  execFileSync("npx", ["tsc", "--ignoreConfig", "--noEmit", "--strict", "--target", "es2022", "--module", "esnext",
-    "--moduleResolution", "bundler", "--lib", "es2022,dom", "--types", "", join(dir, "consumer.ts")], { cwd: ROOT, stdio: "pipe" });
 });
 
 test("example.html sorts photos with the single file (worker mode)", async ({ page }) => {

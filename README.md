@@ -76,6 +76,7 @@ contract, error codes, events, performance and caching setup are in [`docs/API.m
 ### Model storage (CDN)
 
 The model is the one file we host for every partner, so it must not be swapped, and it should be hard to misuse.
+**Recommended setup, with costs and what each measure stops: [`docs/model-protection.md`](docs/model-protection.md).**
 What can and cannot be protected:
 
 - **Tampering: fully preventable.** The release build contains the model's SHA-256; browsers refuse any other file.
@@ -111,9 +112,11 @@ What can and cannot be protected:
 
    Limiting `Access-Control-Allow-Origin` to partners' sites stops other websites from using our model in their
    pages; it does not stop a direct download. CloudFront needs a response headers policy listing the partner origins.
-5. **Optional:** AWS WAF rate limits and CloudFront access logs to spot bulk downloading. Signed, short-lived URLs
-   (CloudFront signed cookies/URLs) would restrict downloads to visitors of partner sites, but need a server that
-   issues them; only worth it if the model itself becomes a target.
+5. **Partner allow-list at the edge:** a CloudFront Function answers `403` to requests whose `Origin` is not a partner
+   site, so random websites and direct downloads get nothing (details and code in `docs/model-protection.md`).
+6. **Optional:** AWS WAF rate limits and CloudFront access logs to spot bulk downloading. Signed, short-lived URLs
+   would restrict downloads further, but need a server that issues them; only worth it if the model itself becomes a
+   target.
 
 **Publishing a new model**
 
@@ -195,6 +198,7 @@ See [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md): left and right side views come out swa
 | `dist/` | Compiled output, one module per source file (generated; used by the app and tests) |
 | `scripts/package-release.ts`, `packaging/` | Single-file release build, its provider README and example page |
 | `release/` | Release packages (generated) |
+| `docs/model-protection.md` | How the model is hosted and protected (recommended setup) |
 | `docs/API.md` | API documentation |
 | `examples/widget-demo.html` | Example page using the drop-zone UI |
 | `js/testfiles.json` | List of labelled test images |

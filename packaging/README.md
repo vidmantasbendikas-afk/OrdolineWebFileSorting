@@ -43,7 +43,9 @@ photos done so far. Details: `API.md`.
 
 ## Testing the example page
 
-You can try the module on your own computer before adding it to your site:
+You can try the module on your own computer before adding it to your site. Ordoline's model server only serves
+registered websites: ask Ordoline to enable your test address (e.g. `http://localhost:8000`) for the integration
+period, or test on your registered staging site instead.
 
 1. {{EXAMPLE_MODEL_STEP}}
 2. Serve this folder over HTTP. Any static web server works. For example, if Python is installed, run this inside the
@@ -64,8 +66,8 @@ You can try the module on your own computer before adding it to your site:
 If it does not work:
 
 - **`Could not load the sorter (MODEL_LOAD_FAILED)`**: open the browser's developer console (F12) for the reason.
-  Usually the model's server does not allow your test page's address (a CORS error); ask Ordoline to allow it, e.g.
-  `http://localhost:8000`. Otherwise check the model URL.
+  Usually the model's server does not allow your test page's address (`403` or a CORS error); ask Ordoline to
+  enable it. Otherwise check the model URL.
 - **Nothing happens, or a module error in the console**: the page was opened from disk (`file://`) instead of through
   the web server.
 - Use `localhost`, not your computer's IP address: browsers treat `http://localhost` as secure, so the model is cached

@@ -2,7 +2,7 @@
 import { CATEGORIES, DEFAULT_CLASSES, LABELS, classToCategory } from "./categories.js";
 import { decode, inferName, unwrap } from "./decode.js";
 import { OrdolineError, errorCodeOf, messageOf } from "./errors.js";
-import { loadModelBytes, type ModelBytes } from "./model-cache.js";
+import { ModelIntegrityError, loadModelBytes, type ModelBytes } from "./model-cache.js";
 import { MIN_MODEL_BYTES, ORT_CDN, type ResolvedOptions } from "./options.js";
 import { preprocess } from "./preprocess.js";
 import { defaultThreads, hasWebGpuAdapter, loadOrt, parseClassNames, sessionInputSize, type OrtModule, type OrtSession } from "./runtime.js";
@@ -88,11 +88,14 @@ export async function buildSorter(
   let loaded: ModelBytes;
   try {
     loaded = await loadModelBytes(opts.modelUrl, opts.modelCache,
-      (bytes, total) => onProgress?.({ loaded: bytes, total, fraction: total ? bytes / total : 0 }));
+      (bytes, total) => onProgress?.({ loaded: bytes, total, fraction: total ? bytes / total : 0 }), opts.modelSha256);
   } catch (err) {
+    if (err instanceof ModelIntegrityError) throw new OrdolineError("MODEL_LOAD_FAILED", err.message, err);
     throw new OrdolineError("MODEL_LOAD_FAILED", `Could not load model from ${opts.modelUrl}`, err);
   }
   const { buffer, source, commit } = loaded;
+  // loadModelBytes verified the bytes; report the hash only where it could actually be computed
+  const verifiedSha256 = opts.modelSha256 && globalThis.crypto?.subtle ? opts.modelSha256 : null;
   if (buffer.byteLength < MIN_MODEL_BYTES) {
     throw new OrdolineError("MODEL_LOAD_FAILED", `Model is only ${buffer.byteLength} bytes (Git LFS pointer?)`);
   }
@@ -126,6 +129,7 @@ export async function buildSorter(
   const threads = backend === "wasm" ? (ort.env?.wasm?.numThreads || 1) : null;
   const model: ModelInfo = Object.freeze({
     url: opts.modelUrl, source, backend, threads, worker: false, inputSize, classes: Object.freeze([...classNames]),
+    sha256: verifiedSha256,
   });
 
   // ORT sessions must not run concurrently; serialize inference calls.

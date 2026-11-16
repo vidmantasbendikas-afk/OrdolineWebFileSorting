@@ -3,7 +3,9 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { test, expect } from "@playwright/test";
-import { MODEL_CDN_URL, ROOT, testImages } from "./helpers.ts";
+import { MODEL_CDN_URL, MODEL_PATH, ROOT, testImages } from "./helpers.ts";
+
+const MODEL_SHA256 = createHash("sha256").update(readFileSync(MODEL_PATH)).digest("hex");
 
 const version: string = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version;
 const NAME = `ordoline-sorter-${version}`;
@@ -29,6 +31,8 @@ test("package ships one JavaScript file, types, docs and valid checksums, but no
   expect(files.filter((f) => f.endsWith(".js"))).toEqual(["ordoline-sorter.js"]);
   expect(files.some((f) => f.endsWith(".onnx"))).toBe(false);
   expect(readFileSync(join(OUT, "ordoline-sorter.js"), "utf8")).toContain(JSON.stringify(MODEL_CDN_URL));
+  expect(readFileSync(join(OUT, "ordoline-sorter.js"), "utf8")).toContain(JSON.stringify(MODEL_SHA256)); // downloaded + hashed
+  expect(readFileSync(join(OUT, "README.md"), "utf8")).toContain(MODEL_SHA256);
   expect(readFileSync(join(OUT, "README.md"), "utf8")).toContain(MODEL_CDN_URL);
   for (const f of ["ordoline-sorter.d.ts", "README.md", "API.md", "KNOWN_ISSUES.md", "example.html", "SHA256SUMS"]) {
     expect(files, f).toContain(f);
@@ -88,7 +92,15 @@ test("the single file loads the model from the baked-in URL", async ({ page }) =
     return (await api.createSorter({ worker: true })).model; // same instance the example page created
   });
   expect(model.url).toBe(MODEL_CDN_URL);
+  expect(model.sha256).toBe(MODEL_SHA256);
   expect(model.worker).toBe(true);
+});
+
+test("--model-sha256 that does not match the deployed model stops the build", () => {
+  let err = "";
+  try { pack(`--model-url=${MODEL_CDN_URL}`, `--model-sha256=${"0".repeat(64)}`, "--out=release/_test/bad-sha"); }
+  catch (e) { err = String((e as { stderr?: Buffer }).stderr ?? e); }
+  expect(err).toContain(`has SHA-256 ${MODEL_SHA256}`);
 });
 
 test("without --model-url, docs and example tell providers to pass modelUrl", () => {

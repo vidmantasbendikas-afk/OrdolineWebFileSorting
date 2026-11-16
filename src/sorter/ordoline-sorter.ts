@@ -32,6 +32,9 @@ const sorters = new Map<string, Promise<Sorter>>();
 export function createSorter(options: SorterOptions = {}): Promise<Sorter> {
   const { onProgress, ...rest } = options;
   const opts = resolveOptions(rest);
+  if (opts.modelSha256 != null && !/^[0-9a-f]{64}$/.test(opts.modelSha256)) {
+    return Promise.reject(new OrdolineError("INVALID_OPTIONS", "modelSha256 must be 64 hexadecimal characters"));
+  }
   if (opts.worker && opts.ort) {
     return Promise.reject(new OrdolineError("INVALID_OPTIONS", "options.ort cannot be passed to a worker; use ortUrl instead"));
   }

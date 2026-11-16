@@ -47,10 +47,47 @@ export interface ModelBytes {
   commit?: (bytes: ArrayBuffer) => Promise<void>;
 }
 
-export async function loadModelBytes(url: string, cacheName: string | false, onProgress?: ByteProgress): Promise<ModelBytes> {
+/** Thrown when the model's SHA-256 does not match the expected one. */
+export class ModelIntegrityError extends Error {
+  constructor(readonly url: string, readonly expected: string, readonly actual: string) {
+    super(`Model integrity check failed for ${url}: SHA-256 is ${actual}, expected ${expected}`);
+    this.name = "ModelIntegrityError";
+  }
+}
+
+/** Hex SHA-256 of the bytes, or null where Web Crypto is unavailable (insecure http: pages). */
+export async function sha256Hex(bytes: ArrayBuffer): Promise<string | null> {
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) return null;
+  const digest = new Uint8Array(await subtle.digest("SHA-256", bytes));
+  return Array.from(digest, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** True if the bytes match `expected` (or there is nothing to check); warns once where hashing is unavailable. */
+async function matches(bytes: ArrayBuffer, expected: string | null): Promise<{ ok: boolean; actual: string | null }> {
+  if (!expected) return { ok: true, actual: null };
+  const actual = await sha256Hex(bytes);
+  if (actual === null) {
+    console.warn("[ordoline] model SHA-256 not checked: Web Crypto is only available on secure (https) pages");
+    return { ok: true, actual: null };
+  }
+  return { ok: actual === expected, actual };
+}
+
+export async function loadModelBytes(
+  url: string, cacheName: string | false, onProgress?: ByteProgress, expectedSha256: string | null = null,
+): Promise<ModelBytes> {
   const cache = await openModelCache(cacheName);
   let cached: Response | undefined;
   if (cache) { try { cached = await cache.match(url); } catch { cached = undefined; } }
+  if (cached && expectedSha256) {
+    // a cached copy that does not match (an older model, or corrupted) is dropped and the model downloaded again
+    const copy = await cached.clone().arrayBuffer();
+    if (!(await matches(copy, expectedSha256)).ok) {
+      cached = undefined;
+      try { await cache!.delete(url); } catch { /* ignore */ }
+    }
+  }
   const useCached = async (copy: Response): Promise<ModelBytes> => {
     const buffer = await copy.arrayBuffer();
     onProgress?.(buffer.byteLength, buffer.byteLength);
@@ -76,6 +113,8 @@ export async function loadModelBytes(url: string, cacheName: string | false, onP
   }
 
   const buffer = await readBody(res, onProgress);
+  const check = await matches(buffer, expectedSha256);
+  if (!check.ok) throw new ModelIntegrityError(url, expectedSha256!, check.actual!);
   if (!cache) return { buffer, source: "network" };
   // Stored only after the session is created from it, so a broken download never gets cached.
   const commit = async (bytes: ArrayBuffer) => {

@@ -70,25 +70,62 @@ and checks it works.
 ```
 
 For other sites, use the release package above: copy `ordoline-sorter.js` to the site, e.g. into `/ordoline/`. The
-model comes from our model CDN (see *Model hosting*). The full input/output
+model comes from our model CDN (see *Model storage*). The full input/output
 contract, error codes, events, performance and caching setup are in [`docs/API.md`](docs/API.md).
 
-### Model hosting
+### Model storage (CDN)
 
-Upload `model/best.onnx` to a CDN that sends these headers, as `model-cdn` does locally
-(`docker/nginx/model-cdn.conf.template`):
+The model is the one file we host for every partner, so it must not be swapped, and it should be hard to misuse.
+What can and cannot be protected:
 
-```
-Cache-Control: no-cache
-ETag: "..."
-Access-Control-Allow-Origin: *
-Access-Control-Expose-Headers: ETag
-```
+- **Tampering: fully preventable.** The release build contains the model's SHA-256; browsers refuse any other file.
+- **Copying: only made harder.** Whatever a browser downloads can be saved by its user. Running in the browser is what
+  keeps patients' photos on their machine, so the weights are always obtainable by a determined person. Protect them
+  with license terms in partner contracts, and make casual reuse harder with the measures below. Encrypting the model
+  would not help: the key would have to be sent to the browser too.
 
-Browsers keep the model in the Cache API and check its ETag on every load. An unchanged model costs one small request,
-and a new upload is picked up automatically. Pass the URL as `modelUrl`, or set `MODEL_CDN_URL` at the top of
-`src/sorter/options.ts` as the default. The app reads its model URL from `/config.json`, which `web` generates
-from `MODEL_URL` in `docker-compose.yml`.
+**Strategy**
+
+1. **One URL per model version, never overwritten**, e.g. `https://models.example.com/ordoline/2026-11-15/best.onnx`.
+   A release of `ordoline-sorter.js` points at exactly one model version. Rolling back means pointing back at the old
+   URL, which still exists.
+2. **SHA-256 baked into the release.** `npm run package -- --model-url=URL` downloads the model from that URL and
+   bakes its hash into `ordoline-sorter.js` next to the URL, so the hash always describes what is actually deployed.
+   Browsers check the downloaded and the cached copy; a mismatch fails with `MODEL_LOAD_FAILED` instead of sorting
+   with the wrong model. `--model-sha256=HEX` makes the build fail unless the deployed file has that hash. Outside
+   the release (our app, `modelUrl` without a baked hash), pass `modelSha256` to get the same check. Checking needs
+   Web Crypto, i.e. an https page; on plain http it is skipped with a console warning.
+3. **Private storage behind the CDN** (AWS: S3 + CloudFront):
+   - S3 bucket with *Block Public Access* on; CloudFront reads it through *Origin Access Control*.
+   - Bucket versioning on, so an accidental overwrite or delete can be undone.
+   - Only a deploy role can write; separate buckets/URLs for dev and production.
+4. **Response headers for `best.onnx`** (as `model-cdn` sends locally, `docker/nginx/model-cdn.conf.template`):
+
+   ```
+   Cache-Control: no-cache                          # browsers revalidate (one small request per load)
+   ETag: "..."                                      # S3/CloudFront send this automatically
+   Access-Control-Allow-Origin: https://partner.example   # partners' origins (or * while testing)
+   Access-Control-Expose-Headers: ETag              # otherwise browsers hide ETag from cross-origin scripts
+   Vary: Origin                                     # when Allow-Origin depends on the requesting site
+   ```
+
+   Limiting `Access-Control-Allow-Origin` to partners' sites stops other websites from using our model in their
+   pages; it does not stop a direct download. CloudFront needs a response headers policy listing the partner origins.
+5. **Optional:** AWS WAF rate limits and CloudFront access logs to spot bulk downloading. Signed, short-lived URLs
+   (CloudFront signed cookies/URLs) would restrict downloads to visitors of partner sites, but need a server that
+   issues them; only worth it if the model itself becomes a target.
+
+**Publishing a new model**
+
+1. Check it: `docker compose run --rm reference` and the accuracy test (`tests/accuracy.spec.ts`).
+2. Upload it under a **new** versioned URL.
+3. Build the release against that URL: `docker compose run --rm tests npm run package -- --model-url=URL`
+   (it prints the SHA-256 it baked in).
+4. Give partners the new package. Sites still on the previous package keep using the previous model URL.
+
+Browsers keep the model in the Cache API and revalidate it by ETag on every load: one small request when nothing
+changed. For local development the app reads its model URL from `/config.json`, which `web` generates from
+`MODEL_URL` in `docker-compose.yml`.
 
 ### Speed
 

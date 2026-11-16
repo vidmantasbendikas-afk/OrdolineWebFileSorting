@@ -61,6 +61,9 @@ Without Docker: Node 22 is installed via nvm but not on the default PATH
   modules must be served as separate files (not bundled) and with CORS if cross-origin.
 - **Multi-threading** needs a cross-origin isolated page (COOP + COEP headers, sent by the `web` nginx). Up to 4
   threads (measured: more gave no gain).
+- **Model integrity**: `modelSha256` (baked in by `package-release.ts`, which downloads the model from `--model-url`
+  and hashes it) is checked in `model-cache.ts` for both downloads and cached copies. The baked hash applies only to
+  the baked URL (`resolveOptions`). Model URLs are versioned and never overwritten (README *Model storage*).
 - **Model caching**: Cache API copy revalidated by ETag; cross-origin the CDN must send
   `Access-Control-Expose-Headers: ETag`. The default model URL is `model/best.onnx` next to the module; nginx aliases
   `/dist/sorter/model/` to `model/`.

@@ -1,5 +1,7 @@
 import { test, expect } from "@playwright/test";
-import { openHarness, SAMPLE, testImages } from "./helpers.ts";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { MODEL_CDN_URL, MODEL_PATH, openHarness, SAMPLE, testImages } from "./helpers.ts";
 
 test.beforeEach(async ({ page }) => openHarness(page));
 
@@ -46,6 +48,22 @@ test("opting in to WebGPU loads the full runtime and falls back to WASM without 
   expect(files).toContain("ort-wasm-simd-threaded.jsep.wasm");
   expect(r.backend).toBe("wasm"); // headless test browsers have no GPU adapter
   expect(r.result.ok && r.result.category).toBe("intraoral_left");
+});
+
+test("modelSha256: the real model passes the check, a wrong hash is refused", async ({ page }) => {
+  const sha256 = createHash("sha256").update(readFileSync(MODEL_PATH)).digest("hex");
+  const r = await page.evaluate(async ({ url, sha256 }) => {
+    const good = await window.api.createSorter({ modelUrl: url, modelSha256: sha256, worker: true });
+    const t = performance.now();
+    const cached = await window.api.createSorter({ modelUrl: url, modelSha256: sha256.toUpperCase() }); // from cache
+    const cachedMs = performance.now() - t;
+    const bad = await window.api.createSorter({ modelUrl: url, modelSha256: "0".repeat(64) }).catch((e) => ({ code: e.code, message: e.message }));
+    return { good: good.model.sha256, cached: [cached.model.source, cached.model.sha256], cachedMs, bad };
+  }, { url: MODEL_CDN_URL, sha256 });
+  expect(r.good).toBe(sha256);
+  expect(r.cached).toEqual(["cache", sha256]);
+  console.log(`load from cache with SHA-256 check: ${Math.round(r.cachedMs)} ms`);
+  expect(r.bad).toMatchObject({ code: "MODEL_LOAD_FAILED", message: expect.stringContaining(sha256) });
 });
 
 test("createSorter returns the same instance for the same options", async ({ page }) => {

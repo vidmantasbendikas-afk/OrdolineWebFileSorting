@@ -74,7 +74,7 @@ Failure:
 ```json
 {
   "apiVersion": "1.0",
-  "model": { "url": "…/best.onnx", "source": "cache", "backend": "wasm", "threads": 4, "worker": true, "inputSize": 384, "classes": ["ceph_front", "…"] },
+  "model": { "url": "…/best.onnx", "source": "cache", "backend": "wasm", "threads": 4, "worker": true, "inputSize": 384, "classes": ["ceph_front", "…"], "sha256": "3f2a…" },
   "results": [ { "index": 0, "id": "0", "...": "one result per input, in input order" } ],
   "byCategory": { "intraoral_left": ["0", "7"], "intraoral_right": [], "...": "every category, ids by confidence" },
   "summary": { "total": 12, "sorted": 11, "failed": 1, "skipped": 0, "lowConfidence": 2, "aborted": false, "timingMs": 5120 }
@@ -114,13 +114,14 @@ some cameras (seen with a SHOFU EyeSpecial C-IV) come out swapped. See [`KNOWN_I
 | `DISPOSED` | `dispose()` was called |
 | `MODEL_LOAD_FAILED`, `RUNTIME_LOAD_FAILED` | `createSorter()` rejects with `OrdolineError` |
 | `ABORTED` | `classify()` cancelled via `signal` (a stopped `sort()` resolves instead; see *Stopping*) |
-| `INVALID_OPTIONS` | `createSorter()` options that cannot be combined (`worker` + `ort`) |
+| `INVALID_OPTIONS` | `createSorter()` option with an invalid value (`modelSha256`), or options that cannot be combined (`worker` + `ort`) |
 
 ## Options
 
 ```js
 createSorter({
   modelUrl: "https://cdn.example.com/ordoline/best.onnx",
+  modelSha256: "3f2a…",                   // expected SHA-256 of the model; see Model integrity
   modelCache: "ordoline-sorter-model",    // Cache API name; false to disable
   numThreads: 4,                          // default: up to 4 when cross-origin isolated, else 1
   worker: true,                           // run in a Web Worker (recommended for pages)
@@ -218,6 +219,18 @@ is downloaded on every load and not cached. The Cache API needs a secure context
 
 The ONNX runtime needs no setup: jsDelivr serves the pinned version as `immutable` for one year.
 Upgrading means changing `ORT_VERSION`, which changes the URL.
+
+## Model integrity
+
+`createSorter({ modelUrl, modelSha256 })` refuses a model whose SHA-256 differs (`MODEL_LOAD_FAILED`, with both
+hashes in the message). Both fresh downloads and the cached copy are checked: a cached copy that does not match is
+dropped and the model downloaded again; if that is impossible (offline), loading fails rather than using it.
+`sorter.model.sha256` shows the hash that was verified (`null` if none was checked).
+
+Release builds made with `--model-url` contain the SHA-256 of the model deployed at that URL, so nothing needs to be
+configured; passing a different `modelUrl` turns the baked-in check off unless you also pass its `modelSha256`.
+Hashing needs Web Crypto, which browsers offer only on secure pages (https, or localhost); on plain http pages the
+check is skipped with a console warning. Hashing the 33 MB model took about 30 ms per load on our test machine.
 
 ## Web Worker (keeps the page responsive)
 

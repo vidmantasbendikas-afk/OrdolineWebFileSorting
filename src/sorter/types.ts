@@ -105,7 +105,7 @@ export type ErrorCode =
   | "MODEL_LOAD_FAILED" // createSorter(): model download/session creation failed
   | "RUNTIME_LOAD_FAILED" // createSorter(): onnxruntime could not be loaded
   | "ABORTED" // classify() cancelled via signal
-  | "INVALID_OPTIONS" // createSorter(): options that cannot be combined (worker + ort)
+  | "INVALID_OPTIONS" // createSorter(): invalid option value, or options that cannot be combined (worker + ort)
   | "BUSY"; // <ordoline-sorter> only: a sort is already running
 
 export interface ClassificationFailure extends ResultBase {
@@ -128,6 +128,8 @@ export interface ModelInfo {
   readonly worker: boolean;
   readonly inputSize: number;
   readonly classes: readonly string[];
+  /** SHA-256 the model bytes were verified against (options.modelSha256), or null if not checked. */
+  readonly sha256: string | null;
 }
 
 export type IndexedResult = ClassificationResult & { index: number };
@@ -167,6 +169,12 @@ export interface SorterOptions {
    * "ordoline-sorter-model"; false disables. Cross-origin the CDN must send `Access-Control-Expose-Headers: ETag`.
    */
   modelCache?: string | false;
+  /**
+   * Expected SHA-256 of the model file (64 hex characters). The model is refused (MODEL_LOAD_FAILED) if the downloaded
+   * or cached bytes do not match. Default: the hash baked into the release build for its default model URL, else null
+   * (not checked). Needs a secure context (https or localhost); elsewhere it is skipped with a console warning.
+   */
+  modelSha256?: string | null;
   /** Your own onnxruntime-web module (e.g. bundled via npm). Default: onnxruntime-web 1.22.0 from jsDelivr. */
   ort?: unknown;
   /**

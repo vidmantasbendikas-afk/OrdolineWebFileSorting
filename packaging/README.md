@@ -52,7 +52,7 @@ downloaded again only when Ordoline publishes a new version.
 
 | Requirement | Why |
 |---|---|
-| **HTTPS** | The model is cached in the browser only on secure pages; without HTTPS it is downloaded on every visit |
+| **HTTPS** | The model is cached, and its SHA-256 checked, only on secure pages; without HTTPS it is downloaded on every visit and not verified |
 | **Access to the model's server** | Users' browsers download the model from it (see *The model*) |
 | **Access to `cdn.jsdelivr.net`** | The ONNX runtime (onnxruntime-web 1.22.0, CPU build, about 11 MB, cached by the browser) is loaded from there. To self-host it, see `ortUrl` / `wasmPaths` in `API.md` |
 | **`Content-Security-Policy`**, if your site has one | Allow `script-src cdn.jsdelivr.net 'wasm-unsafe-eval'`, `worker-src blob:`, and `connect-src` for jsDelivr and the model's host |

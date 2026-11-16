@@ -65,6 +65,11 @@ test("example.html sorts photos with the single file (worker mode)", async ({ pa
   await page.locator("#photos").setInputFiles(photos);
   await expect(page.locator("#status")).toContainText("Sorted 3", { timeout: 60_000 });
   await expect(page.locator("#results tr")).toHaveCount(3);
+  // each row shows its own photo, loaded locally
+  const thumbs = page.locator("#results img");
+  await expect(thumbs).toHaveCount(3);
+  await expect.poll(() => thumbs.evaluateAll((imgs) => imgs.every((i) => (i as HTMLImageElement).naturalWidth > 0))).toBe(true);
+  expect(await thumbs.evaluateAll((imgs) => imgs.map((i) => (i as HTMLImageElement).src.slice(0, 5)))).toEqual(["blob:", "blob:", "blob:"]);
 });
 
 test("the single file loads the model from the baked-in URL", async ({ page }) => {

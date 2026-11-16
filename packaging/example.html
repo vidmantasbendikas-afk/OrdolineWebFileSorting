@@ -6,7 +6,8 @@
   <style>
     body { font: 14px/1.5 system-ui, sans-serif; max-width: 800px; margin: 24px auto; padding: 0 16px; }
     table { border-collapse: collapse; width: 100%; margin-top: 12px; }
-    td, th { border-bottom: 1px solid #ddd; padding: 4px 8px; text-align: left; }
+    td, th { border-bottom: 1px solid #ddd; padding: 4px 8px; text-align: left; vertical-align: middle; }
+    td img { display: block; width: 96px; height: 72px; object-fit: contain; background: #f4f4f4; }
     .low { color: #b45309; }
     .err { color: #b91c1c; }
   </style>
@@ -17,7 +18,7 @@
   <input type="file" id="photos" multiple accept="image/*" disabled />
   <button id="stop" type="button" disabled>Stop</button>
   <table>
-    <thead><tr><th>File</th><th>Category</th><th>Confidence</th></tr></thead>
+    <thead><tr><th>Photo</th><th>File</th><th>Category</th><th>Confidence</th></tr></thead>
     <tbody id="results"></tbody>
   </table>
 
@@ -28,6 +29,7 @@
     const input = document.getElementById("photos");
     const stop = document.getElementById("stop");
     const rows = document.getElementById("results");
+    let thumbs = []; // object URLs of the previous batch: the photos are shown locally, never uploaded
 
     let sorter;
     try {
@@ -48,12 +50,20 @@
       stop.disabled = false;
       input.disabled = true;
       rows.replaceChildren();
+      thumbs.forEach((u) => URL.revokeObjectURL(u));
+      const files = [...input.files];
+      thumbs = files.map((f) => URL.createObjectURL(f));
 
-      const result = await sorter.sort(input.files, {
+      const result = await sorter.sort(files, {
         signal: stopper.signal,
         onResult: (r, { done, total }) => {
           status.textContent = `Sorting ${done} / ${total}`;
           const tr = rows.insertRow();
+          const img = document.createElement("img");
+          img.src = thumbs[r.index]; // r.index: position in the list passed to sort()
+          img.alt = "";
+          img.loading = "lazy";
+          tr.insertCell().append(img);
           tr.insertCell().textContent = r.name ?? r.id;
           if (r.ok) {
             tr.insertCell().textContent = r.label;
@@ -62,7 +72,7 @@
             if (r.lowConfidence) c.className = "low";
           } else {
             const c = tr.insertCell();
-            c.colSpan = 2;
+            c.colSpan = 2; // category + confidence
             c.className = "err";
             c.textContent = `${r.error.code}: ${r.error.message}`;
           }

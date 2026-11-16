@@ -6,4 +6,6 @@ node_modules/
 test-results/
 playwright-report/
 dist/
-release/
+# build output (npm run package); only the plain example build is committed, for reference
+release/*
+!release/ordoline-sorter-1.0.0/

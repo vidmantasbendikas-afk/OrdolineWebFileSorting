@@ -101,8 +101,18 @@ const modelText = modelUrl
     `also contains the model's SHA-256 (\`${modelSha256}\`): browsers refuse a file that does not match it.`
   : "This build has **no default model URL**: pass the URL you received from Ordoline as `modelUrl`, and its " +
     "SHA-256 as `modelSha256` so browsers refuse any other file.";
-const fill = (text: string) => text.replaceAll("{{VERSION}}", version).replaceAll("{{MODEL_URL_TEXT}}", modelText)
-  .replaceAll("{{MODEL_URL_OPTION}}", modelUrl ? "" : `modelUrl: "https://…/best.onnx", `);
+const exampleModelStep = modelUrl
+  ? `Nothing to configure: this build loads the model from \`${modelUrl}\`.`
+  : "Edit `example.html`: replace `https://…/best.onnx` in the `modelUrl` line with the model URL you received from " +
+    "Ordoline, and add `modelSha256: \"…\",` with its SHA-256 on the next line.";
+const fill = (text: string) => {
+  const filled = text.replaceAll("{{VERSION}}", version).replaceAll("{{MODEL_URL_TEXT}}", modelText)
+    .replaceAll("{{EXAMPLE_MODEL_STEP}}", exampleModelStep)
+    .replaceAll("{{MODEL_URL_OPTION}}", modelUrl ? "" : `modelUrl: "https://…/best.onnx", `);
+  const left = filled.match(/\{\{[A-Z_]+\}\}/);
+  if (left) throw new Error(`unfilled placeholder ${left[0]}`);
+  return filled;
+};
 write(join(out, "README.md"), fill(readFileSync(join(ROOT, "packaging", "README.md"), "utf8")));
 write(join(out, "example.html"), fill(readFileSync(join(ROOT, "packaging", "example.html"), "utf8")));
 const api = readFileSync(join(ROOT, "docs", "API.md"), "utf8")

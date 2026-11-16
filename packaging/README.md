@@ -17,8 +17,8 @@ user's browser**. Photos never leave the user's machine.
 
 1. Copy `ordoline-sorter.js` to your web server, e.g. into `/ordoline/` (or copy the whole folder, including the
    example page).
-2. Open `/ordoline/example.html` in a browser to check it works. It must be served over HTTP(S); opening the file
-   directly from disk (`file://`) does not work.
+2. Open `/ordoline/example.html` in a browser to check it works (see *Testing the example page*). It must be served
+   over HTTP(S); opening the file directly from disk (`file://`) does not work.
 3. Use it in your page:
 
 ```html
@@ -40,6 +40,38 @@ Each result has `category` (e.g. `"intraoral_left"`), `label`, `confidence` (0â€
 0.6: worth a human check). `sort()` also returns `byCategory` and a `summary`. Pass your own ids with
 `{ image: file, id: "your-id" }`. Stop a running sort with an `AbortController` (`signal` option); it then returns the
 photos done so far. Details: `API.md`.
+
+## Testing the example page
+
+You can try the module on your own computer before adding it to your site:
+
+1. {{EXAMPLE_MODEL_STEP}}
+2. Serve this folder over HTTP. Any static web server works. For example, if Python is installed, run this inside the
+   folder:
+
+   ```
+   python3 -m http.server 8000
+   ```
+
+   With Node.js installed, `npx serve -l 8000 .` works too.
+3. Open <http://localhost:8000/example.html>. The status line shows `Loading modelâ€¦ N%`, then
+   `Ready (wasm, 1 thread(s))`. The first visit downloads the ONNX runtime (about 11 MB) and the model (about 34 MB);
+   later visits load both from the browser cache.
+4. Choose a few photos. Each row shows the photo, its category and the confidence. Confidences below 60% are shown in
+   orange: worth a human check. **Stop** ends a running sort and keeps the results so far. The photos stay in the
+   browser; nothing is uploaded.
+
+If it does not work:
+
+- **`Could not load the sorter (MODEL_LOAD_FAILED)`**: open the browser's developer console (F12) for the reason.
+  Usually the model's server does not allow your test page's address (a CORS error); ask Ordoline to allow it, e.g.
+  `http://localhost:8000`. Otherwise check the model URL.
+- **Nothing happens, or a module error in the console**: the page was opened from disk (`file://`) instead of through
+  the web server.
+- Use `localhost`, not your computer's IP address: browsers treat `http://localhost` as secure, so the model is cached
+  and its SHA-256 checked as on an HTTPS site. On plain `http://` with any other address it is downloaded on every
+  visit and not checked.
+- One thread is expected here: these simple servers do not send the optional headers from *Optional: faster sorting*.
 
 ## The model
 

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="lt">
+<head>
+<meta charset="utf-8">
+<title>Modelio versijos keitimas: v1 → v2</title>
+<style>
+  body { font: 16px/1.5 system-ui, sans-serif; max-width: 1000px; margin: 2rem auto; padding: 0 1rem; color: #1d2430; background: #f7f8fa; }
+  h1 { font-size: 1.6rem; margin-bottom: .2rem; }
+  h2 { font-size: 1.2rem; margin-top: 2rem; border-bottom: 2px solid #dde2ea; padding-bottom: .3rem; }
+  .sub { color: #5b6575; margin-top: 0; }
+  code { background: #eceff4; padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+  pre { background: #1f2430; color: #e6e9ef; padding: .8rem 1rem; border-radius: 8px; overflow-x: auto; font-size: .85rem; }
+  .lanes { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; }
+  .lane { background: #fff; border-radius: 10px; padding: 1rem; border: 1px solid #dde2ea; }
+  .lane h3 { margin: 0 0 .8rem; font-size: 1rem; }
+  .ordoline h3 { color: #2b5fb4; }
+  .nfq h3 { color: #1d7a52; }
+  .step { display: flex; gap: .7rem; align-items: flex-start; margin-bottom: .3rem; }
+  .num { flex: none; width: 1.8rem; height: 1.8rem; border-radius: 50%; color: #fff; display: grid; place-items: center; font-weight: 600; font-size: .9rem; }
+  .ordoline .num { background: #2b5fb4; }
+  .nfq .num { background: #1d7a52; }
+  .arrow { text-align: center; color: #9aa3b2; font-size: 1.2rem; margin: .1rem 0 .3rem 0; width: 1.8rem; }
+  .handoff { grid-column: 1 / -1; text-align: center; background: #fff7e0; border: 1px dashed #d9a300; border-radius: 8px; padding: .6rem; }
+  .cdn { display: flex; gap: 1rem; align-items: stretch; flex-wrap: wrap; }
+  .box { background: #fff; border: 1px solid #dde2ea; border-radius: 8px; padding: .7rem 1rem; flex: 1; min-width: 220px; }
+  .keep { border-left: 5px solid #9aa3b2; }
+  .new { border-left: 5px solid #2b5fb4; }
+  .rollback { background: #eef7f1; border: 1px solid #b6dcc4; border-radius: 8px; padding: .7rem 1rem; margin-top: 1rem; }
+  table { border-collapse: collapse; width: 100%; background: #fff; }
+  th, td { border: 1px solid #dde2ea; padding: .45rem .6rem; text-align: left; vertical-align: top; }
+  th { background: #eef1f6; }
+  .bad { color: #b3261e; font-weight: 600; }
+  .ok { color: #1d7a52; font-weight: 600; }
+  ul { margin-top: .3rem; }
+</style>
+</head>
+<body>
+
+<h1>Modelio versijos keitimas: v1 → v2</h1>
+<p class="sub">Principas: <b>vienas release'as = vienas modelis.</b> Modelio adresas ir SHA-256 įrašomi į
+<code>ordoline-sorter.js</code>, todėl NFQ modelio versijos kode nenurodo.</p>
+
+<pre>const sorter = await createSorter({ worker: true });   // ir v1, ir v2 laikais tas pats</pre>
+
+<h2>Eiga</h2>
+<div class="lanes">
+  <div class="lane ordoline">
+    <h3>Ordoline</h3>
+    <div class="step"><div class="num">1</div><div><b>Patikrinti v2</b>: tikslumo testas (<code>tests/accuracy.spec.ts</code>) ir Python palyginimas su v1 pagal kategorijas.</div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><div class="num">2</div><div><b>Įkelti v2 šalia v1</b> į S3, nieko neperrašant.</div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><div class="num">3</div><div><b>Pakelti versiją</b> <code>package.json</code> (<code>1.0.0</code> → <code>1.1.0</code>) ir sukurti release'ą su <code>--model-url=…v2.onnx</code>. Build'as parsisiunčia v2 ir įrašo jo SHA-256.</div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><div class="num">4</div><div><b>Išsiųsti NFQ</b> <code>ordoline-sorter-1.1.0</code> su trumpu aprašu: koks modelis, tikslumas, ar kategorijos tos pačios.</div></div>
+  </div>
+  <div class="lane nfq">
+    <h3>NFQ</h3>
+    <div class="step"><div class="num">5</div><div><b>Pakeičia <code>ordoline-sorter.js</code></b> savo serveryje. Kodo keisti nereikia.</div></div>
+    <div class="arrow">↓</div>
+    <div class="step"><div class="num">6</div><div><b>Naudotojų naršyklės</b> kito apsilankymo metu vieną kartą parsisiunčia v2 (~34 MB). Seną v1 kopiją modulis iš talpyklos išmeta pats.</div></div>
+  </div>
+  <div class="handoff">Ordoline (4) ──► NFQ (5): perduodamas tik naujas <code>ordoline-sorter.js</code></div>
+</div>
+
+<div class="rollback"><b>Grąžinti atgal (rollback):</b> NFQ grąžina seną <code>ordoline-sorter.js</code>.
+v1 vis dar yra CDN'e, todėl veikia iškart.</div>
+
+<h2>CDN: versijos laikomos greta</h2>
+<div class="cdn">
+  <div class="box keep"><code>models/web-2d-photo-classifier-v1.onnx</code><br>← lieka (naudoja <code>ordoline-sorter-1.0.0</code>)</div>
+  <div class="box new"><code>models/web-2d-photo-classifier-v2.onnx</code><br>← naujas (naudoja <code>ordoline-sorter-1.1.0</code>)</div>
+</div>
+<p>Failai saugomi S3, CloudFront juos tik pateikia. Versiją laikykite, kol ją naudoja bent vienas partneris
+(ir rollback'ui); kaina – centų dalys per mėnesį.</p>
+
+<h2>v2 bandymas prieš atnaujinant (tik staging)</h2>
+<pre>const sorter = await createSorter({
+  modelUrl: "https://cdn.ordoline.com/models/web-2d-photo-classifier-v2.onnx",
+  modelSha256: "&lt;SHA-256 iš release aprašo&gt;",
+  worker: true,
+});</pre>
+<p>Tik jei v2 suderinamas (tos pačios kategorijos). Gamybai – naujas release'as: rankomis rašyti adresą ir 64 simbolių
+hash'ą lengva suklysti, o modulis ir modelis turi būti patikrinta pora.</p>
+
+<h2>Suderinamas ar nesuderinamas pakeitimas</h2>
+<table>
+  <tr><th>Kas pasikeitė v2</th><th>Rūšis</th><th>Release</th></tr>
+  <tr><td>Perapmokyti svoriai; tos pačios 11 kategorijų, ta pati įvestis</td><td class="ok">Suderinamas</td><td><code>1.1.0</code>; NFQ tik pakeičia failą</td></tr>
+  <tr><td>Kategorija pridėta, pašalinta, pervadinta ar sujungta</td><td class="bad">Nesuderinamas</td><td><code>2.0.0</code>; keisti modulį, dokumentaciją, aiškiai įspėti NFQ</td></tr>
+  <tr><td>Tik kitas įvesties dydis (pvz. 448 vietoj 384)</td><td class="ok">Modulis nuskaito pats</td><td>Minor; patikrinti tikslumą ir greitį</td></tr>
+  <tr><td>Kitas pirminis apdorojimas (resize, normalizacija, spalvų tvarka)</td><td class="bad">Reikia keisti modulį</td><td>Major, kartu su modulio pakeitimu</td></tr>
+</table>
+
+<h2>Ko nedaryti</h2>
+<ul>
+  <li><b>Neperrašyti modelio failo</b> ir nenaudoti <code>models/latest.onnx</code>: SHA-256 nebesutaptų, naršyklės modelį atmestų,
+    o klasifikavimas pasikeistų partneriams nežinant.</li>
+  <li><b>Nenaudoti to paties versijos pavadinimo</b> kitam failui, net „mažam pataisymui“.</li>
+</ul>
+
+<p class="sub">Išsamiau (angliškai): <a href="model-release.md">model-release.md</a>, apsauga – <a href="model-protection.md">model-protection.md</a>.</p>
+</body>
+</html>

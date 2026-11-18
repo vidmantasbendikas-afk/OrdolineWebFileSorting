@@ -1,7 +1,8 @@
 # Releasing a new model version
 
 How to replace the model partners use, e.g. `web-2d-photo-classifier-v1.onnx` → `web-2d-photo-classifier-v2.onnx`.
-Hosting and protection: [`model-protection.md`](model-protection.md).
+Hosting and protection: [`model-protection.md`](model-protection.md). Lithuanian diagram of the process:
+[`model-release-lt.html`](model-release-lt.html).
 
 ## Principle: one release = one model
 

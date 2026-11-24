@@ -19,6 +19,7 @@ docker compose run --rm tests npx playwright test --grep-invert @slow   # fast t
 docker compose run --rm tests                          # all tests incl. 300-photo accuracy (~4 min)
 docker compose run --rm tests npx tsc --noEmit         # type-check sources + tests
 docker compose run --rm reference                      # Python reference accuracy (tools/ground_truth.py)
+docker compose run --rm tests npm run measure:memory     # memory: src/ vs tests/memory/sorter-strips (~5 min)
 docker compose run --rm tests npm run package -- --model-url=https://…/best.onnx   # release/ordoline-sorter-<version>(.zip)
 docker compose build tests                             # after changing package.json / package-lock.json
 ```

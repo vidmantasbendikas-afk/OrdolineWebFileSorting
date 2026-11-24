@@ -13,5 +13,7 @@
     "allowImportingTsExtensions": true,
     "skipLibCheck": true
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts", "playwright.config.ts"]
+  "include": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts", "playwright.config.ts"],
+  // overlay on src/sorter/ (its "./x.js" imports resolve only there): type-checked by tests/memory/build-variant.ts
+  "exclude": ["tests/memory/sorter-strips"]
 }

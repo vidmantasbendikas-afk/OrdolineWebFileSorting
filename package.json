@@ -14,7 +14,8 @@
     "test:fast": "playwright test --grep-invert @slow",
     "test:docker": "docker compose run --rm tests",
     "reference": "docker compose run --rm reference",
-    "package": "node scripts/package-release.ts"
+    "package": "node scripts/package-release.ts",
+    "measure:memory": "tsc -p tsconfig.build.json && node tests/memory/measure-memory.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.65.0",

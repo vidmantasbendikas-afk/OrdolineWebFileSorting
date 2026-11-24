@@ -10,48 +10,57 @@ const MODEL_URL = "model/best.onnx";
 const RELEASE_MODEL_URL = "https://github.com/vidmantasbendikas-afk/OrdolineWebFileSorting/releases/download/model-v1/best.onnx";
 const MIN_MODEL_BYTES = 1 << 20;
 const ORT_WASM_DIR = "ort/";
+
+// Model output order (= training folder order); label 11 means "Other"
 const DEFAULT_CLASSES = [
   "ceph_front", "ceph_side", "extr_profile_rest", "extr_profile_smile", "extr_rest", "extr_smile",
   "intr_front", "intr_left", "intr_lower", "intr_right", "intr_upper",
 ];
+const OTHER_CLASS = "other";
+const OTHER_INDEX = 11;
 
 const CATEGORIES = [
-  { id: "extraoral_frontal_rest", label: "Extraoral frontal (rest)" },
-  { id: "extraoral_frontal_smile", label: "Extraoral frontal (smile)" },
-  { id: "extraoral_profile_rest", label: "Extraoral profile (rest)" },
-  { id: "extraoral_profile_smile", label: "Extraoral profile (smile)" },
-  { id: "intraoral_frontal", label: "Intraoral frontal" },
-  { id: "intraoral_left", label: "Intraoral left" },
-  { id: "intraoral_right", label: "Intraoral right" },
-  { id: "intraoral_upper", label: "Intraoral upper" },
-  { id: "intraoral_lower", label: "Intraoral lower" },
-  { id: "cephalometric_frontal", label: "Cephalometric (frontal)" },
-  { id: "cephalometric_lateral", label: "Cephalometric (lateral)" },
+  { id: "xray_panoramic", label: "X-ray. Panoramic X-Ray" },
+  { id: "xray_lateral", label: "X-ray. Lateral X-Ray" },
+  { id: "extraoral_profile_rest", label: "Extraoral Pictures. Profile" },
+  { id: "extraoral_profile_smile", label: "Extraoral Pictures. Profile with smile" },
+  { id: "extraoral_frontal_rest", label: "Extraoral Pictures. Frontal" },
+  { id: "extraoral_frontal_smile", label: "Extraoral Pictures. Frontal with Smile" },
+  { id: "intraoral_frontal", label: "Intraoral. Frontal view" },
+  { id: "intraoral_upper", label: "Intraoral. Upper arch" },
+  { id: "intraoral_lower", label: "Intraoral. Lower arch" },
+  { id: "intraoral_right", label: "Intraoral. Right view" },
+  { id: "intraoral_left", label: "Intraoral. Left view" },
+  { id: "intraoral_other", label: "Intraoral. Other" },
 ];
 
 // model class name -> UI category id
 const CLASS_TO_CATEGORY = {
-  extr_rest: "extraoral_frontal_rest",
-  extr_smile: "extraoral_frontal_smile",
+  ceph_front: "xray_panoramic",
+  ceph_side: "xray_lateral",
   extr_profile_rest: "extraoral_profile_rest",
   extr_profile_smile: "extraoral_profile_smile",
+  extr_rest: "extraoral_frontal_rest",
+  extr_smile: "extraoral_frontal_smile",
   intr_front: "intraoral_frontal",
-  intr_left: "intraoral_left",
-  intr_right: "intraoral_right",
   intr_upper: "intraoral_upper",
   intr_lower: "intraoral_lower",
-  ceph_front: "cephalometric_frontal",
-  ceph_side: "cephalometric_lateral",
+  intr_right: "intraoral_right",
+  intr_left: "intraoral_left",
+  [OTHER_CLASS]: "intraoral_other",
 };
 
-// fallback for unknown class names; most specific patterns first
+// fallback for unknown names (e.g. test folders); most specific patterns first
 const SUFFIX_TO_CATEGORY = (() => {
   const rules = [
     ["profile_rest", "extraoral_profile_rest"],
     ["profile_smile", "extraoral_profile_smile"],
-    ["ceph_front", "cephalometric_frontal"],
-    ["ceph_side", "cephalometric_lateral"],
-    ["lateral", "cephalometric_lateral"],
+    ["profile", "extraoral_profile_rest"],   // old test folder "extr_profile" (no smile split)
+    ["ceph_front", "xray_panoramic"],
+    ["ceph_side", "xray_lateral"],
+    ["panoramic", "xray_panoramic"],
+    ["lateral", "xray_lateral"],
+    ["other", "intraoral_other"],
     ["rest", "extraoral_frontal_rest"],
     ["smile", "extraoral_frontal_smile"],
     ["front", "intraoral_frontal"],
@@ -323,13 +332,14 @@ async function classify(item) {
   const input = await preprocess(item.file);
   const feeds = { [state.session.inputNames[0]]: new ort.Tensor("float32", input, [1, 3, state.inputSize, state.inputSize]) };
   const res = await state.session.run(feeds);
-  const outName = state.session.outputNames[0];
-  const probs = res[outName].data;
-  let best = 0;
-  for (let i = 1; i < probs.length; i++) if (probs[i] > probs[best]) best = i;
-  const cls = state.classNames[best] || String(best);
-  const conf = probs[best] / (probs.reduce((a, b) => a + b, 0) || 1);
-  item.result = { cls, conf, probs: Array.from(probs) };
+  // "label" already has the per-group thresholds applied (11 = Other); int64 arrives as BigInt
+  const label = Number(res.label.data[0]);
+  const conf = Number(res.confidence.data[0]);
+  const probs = Array.from(res.probs.data);
+  const best = probs.indexOf(Math.max(...probs));
+  const guess = state.classNames[best] || String(best);
+  const cls = label === OTHER_INDEX ? OTHER_CLASS : (state.classNames[label] || String(label));
+  item.result = { cls, conf, guess, probs };
   item.status = "done";
 }
 
@@ -382,7 +392,8 @@ function moveIntoCategory(item, truthStats) {
   const empty = cardGrid && cardGrid.parentElement.querySelector(".cat-empty");
   if (empty) empty.remove();
 
-  const isMatch = !item.truth || item.truth === catId;
+  const rejected = catId === "intraoral_other";
+  const isMatch = !item.truth || item.truth.includes(catId);
   const chip = document.createElement("button");
   chip.type = "button";
   chip.className = "chip" + (isMatch ? "" : " mismatch");
@@ -405,16 +416,18 @@ function moveIntoCategory(item, truthStats) {
   if (countEl) countEl.textContent = String(Number(countEl.textContent || "0") + 1);
 
   if (item.truth) {
-    const st = truthStats.get(item.truth) || { total: 0, correct: 0 };
+    const key = item.truth[0];
+    const st = truthStats.get(key) || { total: 0, correct: 0, rejected: 0 };
     st.total++;
     if (isMatch) st.correct++;
-    truthStats.set(item.truth, st);
+    else if (rejected) st.rejected++;
+    truthStats.set(key, st);
   }
 }
 
 function finishBatch(truthStats) {
-  let total = 0, correct = 0;
-  for (const [, st] of truthStats) { total += st.total; correct += st.correct; }
+  let total = 0, correct = 0, rejected = 0;
+  for (const [, st] of truthStats) { total += st.total; correct += st.correct; rejected += st.rejected; }
 
   if (total > 0) {
     for (const cat of CATEGORIES) {
@@ -423,15 +436,19 @@ function finishBatch(truthStats) {
       if (!head) continue;
       head.querySelectorAll(".acc-badge").forEach((el) => el.remove());
       if (st) {
+        const sortedN = st.total - st.rejected;
         const b = document.createElement("span");
-        b.className = "acc-badge " + (st.correct === st.total ? "acc-good" : "acc-bad");
-        b.textContent = `${st.correct}/${st.total}`;
+        b.className = "acc-badge " + (st.correct === sortedN ? "acc-good" : "acc-bad");
+        b.textContent = `${st.correct}/${sortedN}` + (st.rejected ? ` (+${st.rejected} Other)` : "");
         head.appendChild(b);
       }
     }
+    const sorted = total - rejected;
+    const pct = sorted ? ((correct / sorted) * 100).toFixed(1) : "0.0";
     const line = dom["overall-result"];
     line.classList.remove("hidden");
-    line.textContent = `Test-set accuracy: ${correct}/${total} = ${((correct / total) * 100).toFixed(1)}%`;
+    line.textContent = `Test-set accuracy: ${correct}/${sorted} = ${pct}%` +
+      (rejected ? ` · ${rejected} of ${total} sent to Other` : "");
   } else {
     dom["overall-result"].classList.add("hidden");
   }
@@ -440,6 +457,11 @@ function finishBatch(truthStats) {
 }
 
 /* ---------------- Test set ---------------- */
+
+// Test folder -> accepted categories (old "extr_profile" folder has no rest/smile split)
+function testTruth(dir) {
+  return [classToCategory(dir)];
+}
 
 async function loadTestSet() {
   const perClass = Number(dom["test-count"].value) || 3;
@@ -468,7 +490,7 @@ async function loadTestSet() {
       if (!res.ok) throw new Error(res.status);
       const blob = await res.blob();
       const file = new File([blob], name, { type: blob.type || "image/jpeg" });
-      file.__truth = classToCategory(dir);
+      file.__truth = testTruth(dir);
       addFiles([file]);
     } catch (err) {
       console.warn("Failed to fetch test image", dir, name, err);
@@ -488,8 +510,9 @@ function openLightbox(item, catId, isMatch) {
   let caption = item.name;
   if (item.result) {
     caption += ` → ${item.result.cls} (${(item.result.conf * 100).toFixed(1)}%)`;
+    if (item.result.cls === OTHER_CLASS) caption += ` · best guess ${item.result.guess}`;
     if (catId) caption += ` · sorted into ${catId}`;
-    if (item.truth && !isMatch) caption += ` · expected ${item.truth}`;
+    if (item.truth && !isMatch) caption += ` · expected ${item.truth.join(" or ")}`;
   }
   dom["lightbox-caption"].textContent = caption;
   dom.lightbox.classList.remove("hidden");

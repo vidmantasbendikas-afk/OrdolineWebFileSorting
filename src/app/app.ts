@@ -143,10 +143,19 @@ async function runClassification(): Promise<void> {
   const batch = state.queueOrder.map((id) => state.items.get(id)!);
   const inputs = batch.map((item) => ({ image: item.file, id: item.id, name: item.file.name }));
 
+  // Elapsed time: ticks while sorting, total and per-photo average at the end.
+  const started = performance.now();
+  const seconds = () => ((performance.now() - started) / 1000).toFixed(1);
+  let progress = `0 / ${inputs.length}`;
+  const showProgress = () => ($("sort-progress-text").textContent = `${progress} · ${seconds()} s`);
+  showProgress();
+  const ticker = setInterval(showProgress, 100);
+
   const { summary } = await state.sorter.sort(inputs, {
     signal: state.stopper.signal,
     onResult: (r, { done, total }) => {
-      $("sort-progress-text").textContent = `${done} / ${total}`;
+      progress = `${done} / ${total}`;
+      showProgress();
       state.queueOrder = state.queueOrder.filter((id) => id !== r.id);
       $("queue-count").textContent = String(state.queueOrder.length);
       const item = state.items.get(r.id)!;
@@ -162,12 +171,16 @@ async function runClassification(): Promise<void> {
       }
     },
   });
+  clearInterval(ticker);
+  const elapsedMs = performance.now() - started;
+  const processed = summary.sorted + summary.failed;
 
   // After Stop, photos not reached stay queued: pressing Sort again continues with them.
   $("sort-progress-text").textContent = (summary.aborted ? "stopped: " : "") +
     `sorted ${summary.sorted}` + (summary.failed ? `, ${summary.failed} failed` : "") +
     (summary.lowConfidence ? `, ${summary.lowConfidence} low confidence` : "") +
-    (summary.skipped ? `, ${summary.skipped} still queued` : "");
+    (summary.skipped ? `, ${summary.skipped} still queued` : "") +
+    ` · ${(elapsedMs / 1000).toFixed(1)} s` + (processed ? ` (${Math.round(elapsedMs / processed)} ms/photo)` : "");
   showAccuracy();
   state.classifying = false;
   state.stopper = null;

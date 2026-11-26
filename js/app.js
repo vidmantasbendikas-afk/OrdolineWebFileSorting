@@ -20,8 +20,8 @@ const OTHER_CLASS = "other";
 const OTHER_INDEX = 11;
 
 const CATEGORIES = [
-  { id: "xray_panoramic", label: "X-ray. Panoramic X-Ray" },
-  { id: "xray_lateral", label: "X-ray. Lateral X-Ray" },
+  { id: "xray_panoramic", label: "X-ray. Panoramic X-ray" },
+  { id: "xray_lateral", label: "X-ray. Lateral X-ray" },
   { id: "extraoral_profile_rest", label: "Extraoral Pictures. Profile" },
   { id: "extraoral_profile_smile", label: "Extraoral Pictures. Profile with smile" },
   { id: "extraoral_frontal_rest", label: "Extraoral Pictures. Frontal" },
@@ -31,7 +31,7 @@ const CATEGORIES = [
   { id: "intraoral_lower", label: "Intraoral. Lower arch" },
   { id: "intraoral_right", label: "Intraoral. Right view" },
   { id: "intraoral_left", label: "Intraoral. Left view" },
-  { id: "intraoral_other", label: "Intraoral. Other" },
+  { id: "intraoral_other", label: "Other" },
 ];
 
 // model class name -> UI category id
@@ -392,12 +392,11 @@ function moveIntoCategory(item, truthStats) {
   const empty = cardGrid && cardGrid.parentElement.querySelector(".cat-empty");
   if (empty) empty.remove();
 
-  const rejected = catId === "intraoral_other";
   const isMatch = !item.truth || item.truth.includes(catId);
   const chip = document.createElement("button");
   chip.type = "button";
   chip.className = "chip" + (isMatch ? "" : " mismatch");
-  chip.title = `${item.name} → ${item.result.cls} (${(item.result.conf * 100).toFixed(1)}%)`;
+    chip.title = `${item.name} → ${catLabel(catId)} (${(item.result.conf * 100).toFixed(1)}%)`;
   chip.innerHTML =
     `<img src="${item.url}" alt="${escapeHtml(item.name)}" />` +
     `<span class="conf">${Math.round(item.result.conf * 100)}%</span>`;
@@ -417,17 +416,16 @@ function moveIntoCategory(item, truthStats) {
 
   if (item.truth) {
     const key = item.truth[0];
-    const st = truthStats.get(key) || { total: 0, correct: 0, rejected: 0 };
+    const st = truthStats.get(key) || { total: 0, correct: 0 };
     st.total++;
     if (isMatch) st.correct++;
-    else if (rejected) st.rejected++;
     truthStats.set(key, st);
   }
 }
 
 function finishBatch(truthStats) {
-  let total = 0, correct = 0, rejected = 0;
-  for (const [, st] of truthStats) { total += st.total; correct += st.correct; rejected += st.rejected; }
+  let total = 0, correct = 0;
+  for (const [, st] of truthStats) { total += st.total; correct += st.correct; }
 
   if (total > 0) {
     for (const cat of CATEGORIES) {
@@ -436,19 +434,15 @@ function finishBatch(truthStats) {
       if (!head) continue;
       head.querySelectorAll(".acc-badge").forEach((el) => el.remove());
       if (st) {
-        const sortedN = st.total - st.rejected;
         const b = document.createElement("span");
-        b.className = "acc-badge " + (st.correct === sortedN ? "acc-good" : "acc-bad");
-        b.textContent = `${st.correct}/${sortedN}` + (st.rejected ? ` (+${st.rejected} Other)` : "");
+        b.className = "acc-badge " + (st.correct === st.total ? "acc-good" : "acc-bad");
+        b.textContent = `${st.correct}/${st.total}`;
         head.appendChild(b);
       }
     }
-    const sorted = total - rejected;
-    const pct = sorted ? ((correct / sorted) * 100).toFixed(1) : "0.0";
     const line = dom["overall-result"];
     line.classList.remove("hidden");
-    line.textContent = `Test-set accuracy: ${correct}/${sorted} = ${pct}%` +
-      (rejected ? ` · ${rejected} of ${total} sent to Other` : "");
+    line.textContent = `Test-set accuracy: ${correct}/${total} = ${((correct / total) * 100).toFixed(1)}%`;
   } else {
     dom["overall-result"].classList.add("hidden");
   }
@@ -505,14 +499,18 @@ async function loadTestSet() {
 
 /* ---------------- Lightbox ---------------- */
 
+function catLabel(id) {
+  const c = CATEGORIES.find((x) => x.id === id);
+  return c ? c.label : id;
+}
+
 function openLightbox(item, catId, isMatch) {
   dom["lightbox-img"].src = item.url;
   let caption = item.name;
   if (item.result) {
-    caption += ` → ${item.result.cls} (${(item.result.conf * 100).toFixed(1)}%)`;
-    if (item.result.cls === OTHER_CLASS) caption += ` · best guess ${item.result.guess}`;
-    if (catId) caption += ` · sorted into ${catId}`;
-    if (item.truth && !isMatch) caption += ` · expected ${item.truth.join(" or ")}`;
+    caption += ` → ${catLabel(catId || classToCategory(item.result.cls))} (${(item.result.conf * 100).toFixed(1)}%)`;
+    if (item.result.cls === OTHER_CLASS) caption += ` · best guess ${catLabel(classToCategory(item.result.guess))}`;
+    if (item.truth && !isMatch) caption += ` · expected ${item.truth.map(catLabel).join(" or ")}`;
   }
   dom["lightbox-caption"].textContent = caption;
   dom.lightbox.classList.remove("hidden");
@@ -534,7 +532,7 @@ function buildCategoryCards() {
       <div class="cat-head">
         <div>
           <span class="cat-title">${cat.label}</span>
-          <span class="cat-id">${cat.id}</span>
+          
         </div>
         <div class="cat-meta">
           <span class="cat-count">0</span>
@@ -546,6 +544,8 @@ function buildCategoryCards() {
       </div>
     </article>`).join("");
 }
+
+/* 2026-11-26 Removed technical category names for now. If needed, insert into empty row above <span class="cat-id">${cat.id}</span> */
 
 function wireEvents() {
   dom["open-btn"].addEventListener("click", (e) => { e.stopPropagation(); dom["file-input"].click(); });
